@@ -1,5 +1,3 @@
-````markdown
-
 # bev_multimae
 
 A unified masked autoencoder architecture for fusing BEV radar representations and camera features projected into BEV space, inspired by Voxel-MAE, BEV-MAE, and MultiMAE.
@@ -50,8 +48,8 @@ The directory structure of the project looks like this:
 ```
 
 
-Created using [mlops_template](https://github.com/SkafteNicki/mlops_template),
-a [cookiecutter template](https://github.com/cookiecutter/cookiecutter) for getting
-started with Machine Learning Operations (MLOps).
+## Acknowledgements
 
+This project structure is based on the MLOps template by Nicki Skafte Detlefsen:
+https://github.com/SkafteNicki/mlops
 ````
