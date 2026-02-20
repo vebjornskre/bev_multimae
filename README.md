@@ -12,8 +12,10 @@ The directory structure of the project looks like this:
 │       └── tests.yaml
 ├── configs/                  # Configuration files
 ├── data/                     # Data directory
-│   ├── processed
-│   └── raw
+│   ├── raw/
+│   │   ├── radar/
+│   │   └── camera/
+│   └── processed/
 ├── dockerfiles/              # Dockerfiles
 │   ├── api.Dockerfile
 │   └── train.Dockerfile
@@ -25,15 +27,40 @@ The directory structure of the project looks like this:
 ├── notebooks/                # Jupyter notebooks
 ├── reports/                  # Reports
 │   └── figures/
+├── tools/                    # Entry scripts
+│   ├── train_pretrain.py
+│   ├── train_finetune.py
+│   ├── evaluate.py
+│   └── infer.py
 ├── src/                      # Source code
 │   ├── project_name/
 │   │   ├── __init__.py
-│   │   ├── api.py
-│   │   ├── data.py
-│   │   ├── evaluate.py
-│   │   ├── models.py
-│   │   ├── train.py
-│   │   └── visualize.py
+|   |   ├── datasets/
+│   │   |   ├── radar.py
+│   │   │   ├── camera.py
+│   │   │   └── paired.py
+│   │   ├── preprocessing/    # Sensor to BEV transforms
+│   │   │   ├── radar/
+│   │   │   │   ├── voxelize.py
+│   │   │   │   └── to_bev.py
+│   │   │   ├── camera/
+│   │   │   │   ├── depth.py
+│   │   │   │   ├── lift.py
+│   │   │   │   └── softsplat.py
+│   │   │   └── geometry.py
+│   │   ├── multimae/         # Architecture code
+│   │   │   ├── model.py
+│   │   │   ├── encoders/
+│   │   │   ├── decoders/
+│   │   │   ├── adapters/
+│   │   │   ├── masking/
+│   │   │   └── losses/
+│   │   ├── engines/          # Training logic
+│   │   │   ├── pretrain.py
+│   │   │   ├── finetune.py
+│   │   │   └── inference.py
+│   │   ├── utils/
+│   │   └── visualization/
 └── tests/                    # Tests
 │   ├── __init__.py
 │   ├── test_api.py
