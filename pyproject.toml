@@ -21,7 +21,7 @@ dependencies = [
     "fastapi==0.115.6",
     "torch==2.6.0",
     "typer==0.15.1",
-    "uvicorn==0.34.0",
+    "uvicorn==0.41.0",
 ]
 
 [dependency-groups]
