@@ -58,7 +58,8 @@ The directory structure of the project looks like this:
 │   │   ├── engines/          # Training logic
 │   │   │   ├── pretrain.py
 │   │   │   ├── finetune.py
-│   │   │   └── inference.py
+│   │   │   ├── inference.py
+│   │   │   └── evaluate.py
 │   │   ├── utils/
 │   │   └── visualization/
 └── tests/                    # Tests
