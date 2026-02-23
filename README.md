@@ -33,7 +33,7 @@ The directory structure of the project looks like this:
 │   ├── evaluate.py
 │   └── infer.py
 ├── src/                      # Source code
-│   ├── project_name/
+│   ├── bev_multimae/
 │   │   ├── __init__.py
 |   |   ├── datasets/
 │   │   |   ├── radar.py
