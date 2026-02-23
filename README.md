@@ -50,7 +50,7 @@ The directory structure of the project looks like this:
 │   │   │   └── geometry.py
 │   │   ├── multimae/         # Architecture code
 │   │   │   ├── model.py
-│   │   │   ├── encoders/
+│   │   │   ├── encoder/
 │   │   │   ├── decoders/
 │   │   │   ├── adapters/
 │   │   │   ├── masking/
