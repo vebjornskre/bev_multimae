@@ -4,13 +4,27 @@ from invoke import Context, task
 
 WINDOWS = os.name == "nt"
 PROJECT_NAME = "bev_multimae"
-PYTHON_VERSION = "3.12"
+PYTHON_VERSION = "3.11.14"
 
 # Project commands
+
+# Preprocessing commands
+
+# Run and save depth image (high and feature resolution) on a single frame 
+@task(help={'folder': "Path to the folder containing images"})
+def depth_img(
+    ctx: Context, folder="data/raw/camera/kitti_10_imgs", 
+    plot_save_folder="reports/figures/depth_imgs"
+    ) -> None:
+    """Takes single frame from the specified folder and creates feature and depth map."""
+    ctx.run(f"uv run src/{PROJECT_NAME}/preprocessing/camera/depth.py {folder} {plot_save_folder}", echo=True, pty=not WINDOWS)
+
 @task
 def preprocess_data(ctx: Context) -> None:
     """Preprocess data."""
-    ctx.run(f"uv run src/{PROJECT_NAME}/data.py data/raw data/processed", echo=True, pty=not WINDOWS)
+    ctx.run(
+        f"uv run src/{PROJECT_NAME}/data.py data/raw data/processed", 
+        echo=True, pty=not WINDOWS)
 
 @task
 def train(ctx: Context) -> None:
