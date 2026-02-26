@@ -2,7 +2,7 @@
 
 A unified masked autoencoder architecture for fusing BEV radar representations and camera features projected into BEV space, inspired by Voxel-MAE, BEV-MAE, and MultiMAE.
 
-## Project structure
+## Project structure (structure currently changes a lot now so this is not properly updated yet)
 
 The directory structure of the project looks like this:
 ```txt
