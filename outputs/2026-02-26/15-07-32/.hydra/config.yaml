@@ -1,0 +1,20 @@
+radar_raw_path: data/raw/radar/front_right
+imgs_raw_path: data/raw/camera/front_right
+processed_data_dir: data/processed
+resolution: 0.5
+x_bounds:
+- 5
+- 50
+- ${resolution}
+y_bounds:
+- -15
+- 10
+- ${resolution}
+lb_percent:
+- 0
+- 5
+- 0
+ub_percent:
+- 90
+- 95
+- 90

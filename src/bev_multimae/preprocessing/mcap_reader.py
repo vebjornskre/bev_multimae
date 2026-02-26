@@ -4,6 +4,7 @@ import numpy as np
 from mcap.reader import make_reader
 from mcap_ros2.decoder import DecoderFactory
 
+
 file_path = 'data/raw/agriRobotData.mcap'
 
 TOPICS = {
@@ -20,14 +21,13 @@ def extract(input_path):
 
         for schema, channel, message, ros_msg in reader.iter_decoded_messages(topics=list(TOPICS.keys())):
             
-            # 1. Determine output path
+            # Output_path
             output_dir = TOPICS[channel.topic]
-            os.makedirs(output_dir, exist_ok=True)
-            
+        
             # Use timestamp for filename so they match
             timestamp = message.log_time
             
-            # 2. Extract Image
+            # Image
             if "compressed_image" in channel.topic:
                 # ros_msg.format usually strings like "jpeg" or "png"
                 ext = "png" if "png" in ros_msg.format else "jpg"
@@ -36,21 +36,24 @@ def extract(input_path):
                 with open(output_path, "wb") as img_file:
                     img_file.write(ros_msg.data)
             
-            # 3. Extract Radar (PointCloud2)
+            # Radar
             elif "points" in channel.topic:
-                # Save as numpy .npy files (easiest to load later)
-                # The data is a raw byte buffer. 
-                # To make it usable, we usually view it as float32.
-                
-                # Check point_step (bytes per point) to guess structure if unknown
-                # Common: 32 bytes (x, y, z, intensity, ring, ...) or 16 bytes (x, y, z, i)
-                
-                # For now, let's just save the raw byte buffer to a .bin file 
-                # This mimics the KITTI format.
                 output_path = os.path.join(output_dir, f"{timestamp}.bin")
                 with open(output_path, "wb") as pcd_file:
                     pcd_file.write(ros_msg.data)
 
+                # Debug prints
+                print("Topic:", channel.topic)
+                print("Fields:")
+                for f in ros_msg.fields:
+                    print("  name:", f.name,
+                        "| datatype:", f.datatype,
+                        "| offset:", f.offset)
+
+                print("Point step:", ros_msg.point_step)
+                print("Data length:", len(ros_msg.data))
+
+                break
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python mcap_reader.py <path_to_mcap>")

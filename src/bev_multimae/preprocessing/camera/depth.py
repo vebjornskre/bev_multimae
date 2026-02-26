@@ -15,7 +15,7 @@ def cnn_feature_extract(img):
     # Load CNN backbone
     model = models.mobilenet_v3_large(weights="IMAGENET1K_V1").to(device)
     model.eval()
-    backbone = model.features[:10]
+    backbone = model.features[:16]
 
     # Preprocessing
     normalize = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -69,7 +69,7 @@ def zoe_depth(img, feat, plot_save_folder=None, plot=False):
 
     if plot:
         # Full image and depth map
-        fig, axes = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'hspace': 0.05})
+        fig, axes = plt.subplots(2, 1, figsize=(10, 10))
         
         # Image
         axes[0].imshow(img)
@@ -86,7 +86,7 @@ def zoe_depth(img, feat, plot_save_folder=None, plot=False):
         plt.close()
 
         # Feature map and downsampled depth
-        fig, axes = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'hspace': 0.05})
+        fig, axes = plt.subplots(2, 1, figsize=(10, 10))
         
         feat = feat.squeeze(0)
 

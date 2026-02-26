@@ -1,0 +1,16 @@
+# Parameters for handling data such as BEV grid dimensions etc.
+
+# Paths
+radar_raw_path: "data/raw/radar/front_right/"
+imgs_raw_path: "data/raw/camera/front_right/"
+processed_data_dir: "data/processed"
+
+# BEV
+resolution: 0.5
+x_bounds: [5, 50, "${resolution}"]
+y_bounds: [-15, 10, "${resolution}"]
+
+# Point cloud specific
+lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
+ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
+

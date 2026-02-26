@@ -8,12 +8,12 @@ PYTHON_VERSION = "3.11.14"
 
 # Project commands
 
-# Preprocessing commands
+# PREPROCESSING COMMANDS
 
 # Run and save depth image (high and feature resolution) on a single frame 
 @task(help={'folder': "Path to the folder containing images"})
 def depth_img(
-    ctx: Context, folder="data/raw/camera/kitti_10_imgs", 
+    ctx: Context, folder="data/raw/camera/front_right", 
     plot_save_folder="reports/figures/depth_imgs"
     ) -> None:
     """Takes single frame from the specified folder and creates feature and depth map."""
@@ -26,6 +26,7 @@ def preprocess_data(ctx: Context) -> None:
         f"uv run src/{PROJECT_NAME}/data.py data/raw data/processed", 
         echo=True, pty=not WINDOWS)
 
+# TRAINING COMMANDS
 @task
 def train(ctx: Context) -> None:
     """Train model."""
