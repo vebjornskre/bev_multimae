@@ -1,5 +1,12 @@
 # Trun voxel grid into BEV
 
+################################
+# I NEED TO ANALYZE DATA DISTRIBUTION IN POLAR COORDINATES
+# THEN GO TO XYZ. FOR EXAMPLE, IF I REMOVE EVERYTHING TALLER
+# THAN 3 METERS I MIGHT KEEP NOISE THAT IS CLOSE AND REOMVE SIGNLAL
+# FAR AWAY
+################################
+
 import logging
 import os
 from pathlib import Path
@@ -98,9 +105,6 @@ def to_bev(cfg: DictConfig):
 @hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
 def main(cfg: DictConfig) -> None:
     log.info(f"Configuration:\n{cfg}")
-
-    lb_percent = (0, 5, 0)
-    ub_percent = (90, 95, 90)
 
     x_range, y_range, z_range = get_point_ranges(cfg)
 

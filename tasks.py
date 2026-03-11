@@ -19,6 +19,13 @@ def depth_img(
     """Takes single frame from the specified folder and creates feature and depth map."""
     ctx.run(f"uv run src/{PROJECT_NAME}/preprocessing/camera/depth.py {folder} {plot_save_folder}", echo=True, pty=not WINDOWS)
 
+# Either extract mcap 
+@task
+def read_mcap(ctx: Context, l=False) -> None:
+    """Read MCAP file. Use --list-topics to only list available topics."""
+    flag = "list_topics" if l else "extract"
+    ctx.run(f"uv run src/{PROJECT_NAME}/preprocessing/mcap_reader.py {flag}", echo=True, pty=not WINDOWS)
+
 @task
 def preprocess_data(ctx: Context) -> None:
     """Preprocess data."""

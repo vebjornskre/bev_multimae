@@ -1,9 +1,19 @@
 # Parameters for handling data such as BEV grid dimensions etc.
 
-# Paths
+#####Paths
+# Data
 radar_raw_path: "data/raw/radar/front_right/"
 imgs_raw_path: "data/raw/camera/front_right/"
+camera_info: "data/raw/camera/front_right/camera_info.npz"
 processed_data_dir: "data/processed"
+mcap_path: "data/raw/agriRobotData.mcap"
+
+# Models
+depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
+depth_model: "zoe" # can also be metric3d, depth_any, depth_pro and zoe (zoe needs upgrade of timm)
+
+# Frame for single predictions (development/visualizations)
+img_frame: 140
 
 # BEV
 resolution: 0.5
@@ -14,3 +24,5 @@ y_bounds: [-15, 10, "${resolution}"]
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
 
+# Plot/figure folder
+plot_folder: "reports/figures/"
