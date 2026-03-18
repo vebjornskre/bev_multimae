@@ -23,7 +23,7 @@ dependencies = [
     "torchvision==0.21.0",
     "torchaudio==2.6.0",
     "typer==0.15.1",
-    "uvicorn==0.34.0",
+    "uvicorn==0.42.0",
     "huggingface-hub>=1.4.1",
     "datasets>=4.5.0",
     "matplotlib>=3.10.8",
