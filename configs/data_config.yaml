@@ -10,10 +10,11 @@ mcap_path: "data/raw/agriRobotData.mcap"
 
 # Models
 depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
-depth_model: "zoe" # can also be metric3d, depth_any, depth_pro and zoe (zoe needs upgrade of timm)
+depth_model: "unidepth" # can also be metric3d, depth_any, depth_pro, unidepth and zoe (zoe needs upgrade of timm)
 
 # Frame for single predictions (development/visualizations)
 img_frame: 140
+radar_frame: 420
 
 # BEV
 resolution: 0.5
@@ -23,6 +24,11 @@ y_bounds: [-15, 10, "${resolution}"]
 # Point cloud specific
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
+rcs_m2_filter: 0          # m^2
+snr_min: 0               # dB
+min_dist: 0               # m
+max_dist: 120              # m
+elevation_angle: -0.2     # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"

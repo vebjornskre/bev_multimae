@@ -21,11 +21,11 @@ def depth_img(
 
 # Either extract mcap 
 @task
-def read_mcap(ctx: Context, l=False) -> None:
-    """Read MCAP file. Use --list-topics to only list available topics."""
-    flag = "list_topics" if l else "extract"
+def read_mcap(ctx: Context, l=False, t=False) -> None:
+    """Read MCAP file. Use -l to list topics, -t to list transforms, default extracts."""
+    flag = "list_topics" if l else "list_transforms" if t else "extract"
     ctx.run(f"uv run src/{PROJECT_NAME}/preprocessing/mcap_reader.py {flag}", echo=True, pty=not WINDOWS)
-
+    
 @task
 def preprocess_data(ctx: Context) -> None:
     """Preprocess data."""

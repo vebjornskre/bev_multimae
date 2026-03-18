@@ -2,6 +2,10 @@
 
 A unified masked autoencoder architecture for fusing BEV radar representations and camera features projected into BEV space, inspired by Voxel-MAE, BEV-MAE, and MultiMAE.
 
+## Dependancies
+If you use ZoeDepth as the depth model then you have to activate the zoe env:
+source .venv_zoe/bin/activate
+
 ## Project structure (structure currently changes a lot now so this is not properly updated yet)
 
 The directory structure of the project looks like this:

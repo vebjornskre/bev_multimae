@@ -1,0 +1,32 @@
+radar_raw_path: data/raw/radar/front_right/
+imgs_raw_path: data/raw/camera/front_right/
+camera_info: data/raw/camera/front_right/camera_info.npz
+processed_data_dir: data/processed
+mcap_path: data/raw/agriRobotData.mcap
+depth_pro_weights: /work3/s242723/.cache/depth-pro/depth_pro.pt
+depth_model: unidepth
+img_frame: 140
+radar_frame: 420
+resolution: 0.5
+x_bounds:
+- 5
+- 50
+- ${resolution}
+y_bounds:
+- -15
+- 10
+- ${resolution}
+lb_percent:
+- 0
+- 5
+- 0
+ub_percent:
+- 90
+- 95
+- 90
+rcs_m2_filter: 0.01
+snr_min: 0
+min_dist: 0
+max_dist: 120
+elevation_angle: -0.2
+plot_folder: reports/figures/

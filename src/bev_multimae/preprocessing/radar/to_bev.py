@@ -1,23 +1,18 @@
-# Trun voxel grid into BEV
-
-################################
-# I NEED TO ANALYZE DATA DISTRIBUTION IN POLAR COORDINATES
-# THEN GO TO XYZ. FOR EXAMPLE, IF I REMOVE EVERYTHING TALLER
-# THAN 3 METERS I MIGHT KEEP NOISE THAT IS CLOSE AND REOMVE SIGNLAL
-# FAR AWAY
-################################
-
-import logging
-import os
-from pathlib import Path
+# radar_processing.py
 
 import numpy as np
+import os
+from pathlib import Path
+import logging
+
 import hydra
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig
 
+from bev_multimae.preprocessing.mcap_reader import list_transforms, apply_transform, get_radar_transform
 
 log = logging.getLogger(__name__)
+
 
 def load_radar_bin(path):
 
@@ -54,64 +49,162 @@ def load_radar_bin(path):
 
     return radar
 
-def get_point_ranges(cfg: DictConfig):
 
-    # Path to raw radar dir
-    path = Path(to_absolute_path(cfg.radar_raw_path))
-    lb_percent = cfg.lb_percent
-    ub_percent = cfg.ub_percent
+def filter_radar(radar: dict, thresholds: dict) -> dict:
+    mask = np.ones_like(radar['radial_distance'], dtype=bool)
 
-    x_ranges = []
-    y_ranges = []
-    z_ranges = []
+    for field, (lo, hi) in thresholds.items():
+        vals = radar[field]
+        if lo is not None:
+            mask &= vals >= lo
+        if hi is not None:
+            mask &= vals <= hi
 
-    for fname in os.listdir(path):
-        radar = load_radar_bin(path=str(path / fname))
+    return {k: v[mask] for k, v in radar.items()}
 
-        x_range = (np.percentile(radar['x'], lb_percent[0]), np.percentile(radar['x'], ub_percent[0]))
-        y_range = (np.percentile(radar['y'], lb_percent[1]), np.percentile(radar['y'], ub_percent[1]))
 
-        # All values that are very negative in the z direction 
-        # are probably multipath signals, so we exclude them    
-        z_min = np.min(radar['z'][radar['z'] >= -1.5]) if np.any(radar['z'] >= -1.5) else -1.5
+def to_base_link(radar: dict, T: np.ndarray) -> dict:
+    # Transform points from radar_front_right frame to base_link
+    pts = np.stack([radar["x"], radar["y"], radar["z"]], axis=-1)
+    pts = apply_transform(T, pts)
+    return {**radar, "x": pts[:, 0], "y": pts[:, 1], "z": pts[:, 2]}
 
-        z_range = (z_min, np.percentile(radar['z'], ub_percent[2]))
 
-        x_ranges.append(x_range)
-        y_ranges.append(y_range)
-        z_ranges.append(z_range)
+def m2_to_dbsm(rcs_m2):
+    return 10 * np.log10(rcs_m2)
 
-    mean_x_lb = np.mean(np.array(x_ranges)[:, 0])
-    mean_x_ub = np.mean(np.array(x_ranges)[:, 1])
 
-    mean_y_lb = np.mean(np.array(y_ranges)[:, 0])
-    mean_y_ub = np.mean(np.array(y_ranges)[:, 1])
+def build_thresholds(cfg):
+    return {
+        "radar_cross_section": (m2_to_dbsm(cfg.rcs_m2_filter), None),
+        "signal_noise_ratio": (cfg.snr_min, None),
+        "radial_distance": (cfg.min_dist, cfg.max_dist),
+    }
 
-    mean_z_lb = np.mean(np.array(z_ranges)[:, 0])
-    mean_z_ub = np.mean(np.array(z_ranges)[:, 1])
+
+def load_and_process(path, thresholds, T):
+    # Load, filter and transform to base_link
+    radar = load_radar_bin(path)
+    radar = filter_radar(radar, thresholds)
+    radar = to_base_link(radar, T)
+    return radar
+
+
+
+def compute_stats(radar_dir: str, T=None, thresholds=None, percentiles=(1, 99)):
+    all_stats = {
+        'radial_distance': [],
+        'azimuth_angle': [],
+        'elevation_angle': [],
+        'radial_velocity': [],
+        'radar_cross_section': [],
+        'signal_noise_ratio': [],
+        'radial_distance_variance': [],
+        'azimuth_angle_variance': [],
+        'elevation_angle_variance': [],
+        'azimuth_angle_probability': [],
+        'elevation_angle_probability': [],
+        'velocity_resolution_processing_probability': [],
+    }
+
+    path = Path(radar_dir)
+    pts_per_scan = []
     
 
-    print(f'\nmean x-range: {round(mean_x_lb, 2)} m , {mean_x_ub} m')
-    print(f'mean y-range: {round(mean_y_lb, 2)} m , {mean_y_ub} m')
-    print(f'mean z-range: {round(mean_z_lb, 2)} m , {mean_z_ub} m')
+    for fname in os.listdir(path):
+        radar = load_radar_bin(str(path / fname))
+        radar = to_base_link(radar, T)
 
-    return (mean_x_lb, mean_x_ub), (mean_y_lb, mean_y_ub), (mean_z_lb, mean_z_ub)
+        if thresholds is not None:
+            radar = filter_radar(radar, thresholds)
+
+        pts_per_scan.append(len(radar['radial_distance']))
+        for k in all_stats:
+            all_stats[k].append(radar[k])
+
+    combined = {k: np.concatenate(v) for k, v in all_stats.items()}
+
+    lb, ub = percentiles
+    report = {}
+    for k, vals in combined.items():
+        report[k] = {
+            'min': np.min(vals),
+            'max': np.max(vals),
+            f'p{lb}': np.percentile(vals, lb),
+            f'p{ub}': np.percentile(vals, ub),
+            'mean': np.mean(vals),
+            'median': np.median(vals),
+            'std': np.std(vals),
+        }
+
+    pts_per_scan = np.array(pts_per_scan)
+    scan_stats = {
+        'min': int(np.min(pts_per_scan)),
+        'max': int(np.max(pts_per_scan)),
+        'mean': float(np.mean(pts_per_scan)),
+        'median': float(np.median(pts_per_scan)),
+        'std': float(np.std(pts_per_scan)),
+    }
+
+    return report, combined, scan_stats
 
 
-def to_bev(cfg: DictConfig):
-    ...
+def print_stats(report, combined):
+    print("\nPolar statistics\n")
+
+    r = report['radial_distance']
+    print(f"Radial distance (m)")
+    print(f"  min {r['min']:.2f}   p1 {r['p1']:.2f}   median {r['median']:.2f}   p99 {r['p99']:.2f}   max {r['max']:.2f}\n")
+
+    el = report['elevation_angle']
+    print(f"Elevation angle (deg)")
+    print(f"  min {np.degrees(el['min']):.1f}   p1 {np.degrees(el['p1']):.1f}   p99 {np.degrees(el['p99']):.1f}   max {np.degrees(el['max']):.1f}\n")
+
+    az = report['azimuth_angle']
+    print(f"Azimuth angle (deg)")
+    print(f"  min {np.degrees(az['min']):.1f}   p1 {np.degrees(az['p1']):.1f}   p99 {np.degrees(az['p99']):.1f}   max {np.degrees(az['max']):.1f}\n")
+
+    rcs = report['radar_cross_section']
+    print(f"Radar cross section (dBsm)")
+    print(f"  min {rcs['min']:.1f}   p1 {rcs['p1']:.1f}   p5 {np.percentile(combined['radar_cross_section'],5):.1f}   median {rcs['median']:.1f}   p99 {rcs['p99']:.1f}   max {rcs['max']:.1f}\n")
+
+    snr = report['signal_noise_ratio']
+    print(f"Signal to noise ratio (dB)")
+    print(f"  min {snr['min']:.1f}   p1 {snr['p1']:.1f}   median {snr['median']:.1f}   max {snr['max']:.1f}\n")
+
+    for k in ['radial_distance_variance', 'azimuth_angle_variance', 'elevation_angle_variance']:
+        v = report[k]
+        print(f"{k}")
+        print(f"  p95 {np.percentile(combined[k],95):.4f}   max {v['max']:.4f}\n")
+
+    for k in ['azimuth_angle_probability', 'elevation_angle_probability']:
+        p = report[k]
+        print(f"{k}")
+        print(f"  min {p['min']:.2f}   p5 {np.percentile(combined[k],5):.2f}   median {p['median']:.2f}\n")
 
 
 @hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
 def main(cfg: DictConfig) -> None:
     log.info(f"Configuration:\n{cfg}")
 
-    x_range, y_range, z_range = get_point_ranges(cfg)
+    path = cfg.radar_raw_path
+    thresholds = build_thresholds(cfg)
+    T = get_radar_transform(cfg.mcap_path)
 
-    to_bev(cfg)
+    print('\nBEFORE FILTERING')
+    report, combined, scan_stats = compute_stats(path, T)
+    print_stats(report, combined)
+
+    print("Points per scan")
+    print(f"  min {scan_stats['min']}   median {scan_stats['median']:.1f}   mean {scan_stats['mean']:.1f}   max {scan_stats['max']}   std {scan_stats['std']:.1f}")
+
+    print('\nAFTER FILTERING')
+    report, combined, scan_stats = compute_stats(path, T, thresholds)
+    print_stats(report, combined)
+
+    print("Points per scan")
+    print(f"  min {scan_stats['min']}   median {scan_stats['median']:.1f}   mean {scan_stats['mean']:.1f}   max {scan_stats['max']}   std {scan_stats['std']:.1f}")
+
 
 if __name__ == '__main__':
     main()
-
-
-    

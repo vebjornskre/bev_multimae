@@ -107,6 +107,10 @@ class DepthEstimator:
         elif self.depth_model == "metric3d":
             self.model = self._load_metric3d()
             self.transform = None
+        
+        elif self.depth_model == "unidepth":
+            self.model = self._load_unidepth()
+            self.transform = None
 
         else:
             raise ValueError(f"Unknown depth_model: {self.depth_model}")
@@ -117,7 +121,8 @@ class DepthEstimator:
         elif self.depth_model == 'depth_pro': return self._predict_depth_pro(img)
         elif self.depth_model == 'depth_any': return self._predict_depth_any(img)
         elif self.depth_model == 'metric3d': return self._predict_metric3d(img)
-
+        elif self.depth_model == 'unidepth': return self._predict_unidepth(img)
+ 
     def _load_zoe(self):
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -182,6 +187,23 @@ class DepthEstimator:
         model = torch.hub.load('yvanyin/metric3d', 'metric3d_vit_large', pretrain=True)
         model.to(device).eval()
         log.info("Metric3D v2 ViT-Large model loaded")
+
+        return model
+    
+    def _load_unidepth(self):
+        from unidepth.models import UniDepthV2
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        model = UniDepthV2.from_pretrained("lpiccinelli/unidepth-v2-vitl14")
+        model.resolution_level = 2
+
+        model.to(device)
+        model.eval()
+
+        log.info("UniDepthV2 model loaded")
+        log.info(f"Model backbone param abs mean: {next(model.parameters()).abs().mean()}")
+        log.info(f"Lenght of model state dict: {len(model.state_dict())}")
 
         return model
 
@@ -324,6 +346,28 @@ class DepthEstimator:
             with open(comm_path, 'w') as f:
                 f.writelines(lines)
             log.info("Patched Metric3D hub: mmcv → mmengine fallback")
+
+    def _predict_unidepth(self, img):
+
+        if isinstance(img, Image.Image):
+            img = np.array(img)
+
+        H, W = img.shape[:2]
+
+        rgb = torch.from_numpy(img).permute(2,0,1).float() / 255.
+        rgb = rgb.unsqueeze(0).to(self.device)
+
+        K = torch.tensor(self.K).float().unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            pred = self.model.infer(rgb, K)
+
+        depth = pred["depth"].squeeze()
+
+        if self.plot:
+            plot_depth_maps(self.cfg, img, depth, None)
+
+        return depth
 
 @hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
 def main(cfg: DictConfig) -> None:

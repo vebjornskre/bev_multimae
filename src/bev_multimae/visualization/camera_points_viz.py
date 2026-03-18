@@ -35,12 +35,14 @@ def plot_lifted_points(cfg, pts, colors, img, meshlab=False):
     axes[1].set_ylabel('Depth (m)')
     axes[1].set_title('BEV (top-down)')
     axes[1].set_aspect('equal')
+    axes[1].invert_xaxis()
 
     axes[2].scatter(pts[:, 1], pts[:, 2], s=0.3, c=colors)
     axes[2].set_xlabel('Left / Right (m)')
     axes[2].set_ylabel('Height (m)')
     axes[2].set_title('Front view')
     axes[2].set_aspect('equal')
+    axes[2].invert_xaxis()
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=200)
@@ -50,7 +52,7 @@ def plot_lifted_points(cfg, pts, colors, img, meshlab=False):
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pts)
         pcd.colors = o3d.utility.Vector3dVector(colors)
-        o3d.io.write_point_cloud(save_path, pcd)
+        o3d.io.write_point_cloud(f'{save_path[:-3]}ply', pcd)
 
 if __name__ == '__main__':
     print('This file can not be run as a stand alone script at this time')

@@ -1,4 +1,3 @@
-from bev_multimae.preprocessing.camera.depth_old import zoe_depth, load_zoe
 import matplotlib.pyplot as plt
 import torch
 from omegaconf import DictConfig
@@ -32,7 +31,10 @@ def plot_depth_maps(cfg, img, depth, feat=None):
         axes[0].axis("off")
         
         # Depth
-        depth_np = depth.squeeze().cpu().numpy()
+        if type(depth) == torch.Tensor:
+            depth_np = depth.squeeze().cpu().numpy()
+        else:
+            depth_np = depth
         axes[1].imshow(depth_np, cmap='plasma')
         axes[1].set_title("Full Resolution Depth")
         axes[1].axis("off")
@@ -79,8 +81,12 @@ def plot_depth_maps(cfg, img, depth, feat=None):
         axes[0].axis("off")
 
         # Depth map
-        depth_np = depth.squeeze().cpu().numpy()
-        axes[1].imshow(depth_np, cmap='plasma')
+        if type(depth) == torch.Tensor:
+            depth_np = depth.squeeze().cpu().numpy()
+        else:
+            depth_np = depth
+        im = axes[1].imshow(depth_np, cmap='plasma')
+        plt.colorbar(im, ax=axes[1], label='Depth (m)')
         axes[1].set_title("Depth Map")
         axes[1].axis("off")
 
@@ -92,15 +98,17 @@ def plot_depth_maps(cfg, img, depth, feat=None):
 @hydra.main(config_path="../../../configs", config_name="data_config", version_base=None)
 def main(cfg: DictConfig) -> None:
 
-    device = 'cpu'
-    zoe, _, img = load_zoe(cfg, zoe=True, cnn=False, device=device)
+    # CODE BELOW DEPRECIATED SWITCH TO NEW METHOD USING THE DEPTH ESTIMATOR CLASS
+
+    # device = 'cpu'
+    # zoe, _, img = load_zoe(cfg, zoe=True, cnn=False, device=device)
 
     # Path from cfg
-    plot_folder = os.path.join(Path(to_absolute_path(cfg.plot_folder)), 'depth_imgs')
+    # plot_folder = os.path.join(Path(to_absolute_path(cfg.plot_folder)), 'depth_imgs')
 
     # Run depth estimation
-    depth = zoe_depth(model=zoe, img=img)
-    plot_depth_maps(plot_folder, img, depth)
-
+    # depth = zoe_depth(model=zoe, img=img)
+    # plot_depth_maps(plot_folder, img, depth)
+    ...
 if __name__ == '__main__':
     main()
