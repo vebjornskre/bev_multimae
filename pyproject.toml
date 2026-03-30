@@ -40,6 +40,7 @@ dependencies = [
     "timm==1.0.3",
     "einops>=0.8.2",
     "wandb>=0.25.1",
+    "moge",
 ]
 
 [dependency-groups]
@@ -64,6 +65,7 @@ override-dependencies = ["numpy>=1.24"]
 
 [tool.uv.sources]
 depth-pro = { git = "https://github.com/apple/ml-depth-pro.git" }
+moge = { git = "https://github.com/microsoft/MoGe.git" }
 
 [tool.coverage.run]
 omit = ["tests/*"]

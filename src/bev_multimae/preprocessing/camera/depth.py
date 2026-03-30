@@ -1,11 +1,10 @@
 # stdlib
 import contextlib
-import glob
 import logging
 import os
 import warnings
 from dataclasses import replace
-from pathlib import Path
+
 
 # third-party
 import cv2 as cv
@@ -20,32 +19,11 @@ from transformers import pipeline
 
 # hydra
 import hydra
-from hydra.utils import to_absolute_path
 
 # local / project
 from bev_multimae.visualization.depth_visualization import plot_depth_maps
 
 log = logging.getLogger(__name__)
-
-
-def load_single_img(cfg: DictConfig):
-
-    img_folder = Path(to_absolute_path(cfg.imgs_raw_path))
-    idx = cfg.img_frame
-
-    ext = "*.jpg"
-    img_files = glob.glob(os.path.join(img_folder, ext))
-
-    img_path = sorted(img_files)[idx]
-    log.info(f"Processing image: {Path(img_path).name}")
-
-    if cfg.depth_model == 'depth_pro':
-        import depth_pro
-        img, _, _ = depth_pro.load_rgb(img_path)
-        return img
-    
-    img = Image.open(img_path).convert("RGB")
-    return img
 
 def cnn_feature_extract(model, img, device):
 
@@ -112,6 +90,14 @@ class DepthEstimator:
             self.model = self._load_unidepth()
             self.transform = None
 
+        elif self.depth_model == "depth_any_rel":
+            self.model = self._load_depth_any_rel()
+            self.transform = None
+        
+        elif self.depth_model == "moge":
+            self.model = self._load_moge()
+            self.transform = None
+
         else:
             raise ValueError(f"Unknown depth_model: {self.depth_model}")
 
@@ -122,6 +108,8 @@ class DepthEstimator:
         elif self.depth_model == 'depth_any': return self._predict_depth_any(img)
         elif self.depth_model == 'metric3d': return self._predict_metric3d(img)
         elif self.depth_model == 'unidepth': return self._predict_unidepth(img)
+        elif self.depth_model == 'depth_any_rel': return self._predict_depth_any_rel(img)
+        elif self.depth_model == 'moge': return self._predict_moge(img)
  
     def _load_zoe(self):
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -207,6 +195,24 @@ class DepthEstimator:
 
         return model
 
+    def _load_depth_any_rel(self):
+        return pipeline(
+            task="depth-estimation",
+            model="depth-anything/Depth-Anything-V2-Large-hf",
+            device="cuda" if torch.cuda.is_available() else "cpu",
+        )
+    
+    def _load_moge(self):
+        if not torch.cuda.is_available():
+            raise RuntimeError("MoGe requires CUDA — run on a GPU node")
+
+        from moge.model.v2 import MoGeModel
+        model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal")
+        model.to(self.device).eval()
+        log.info("MoGe-2 model loaded")
+        return model
+
+
     def _predict_zoe(self, img):
         assert isinstance(img, Image.Image), f"Expected PIL image, got {type(img)}"
 
@@ -229,6 +235,7 @@ class DepthEstimator:
         return depth
     
     def _predict_depth_pro(self, img):
+        img = np.array(img).astype(np.float32) / 255.0
         assert isinstance(img, np.ndarray), f'Expected np.ndarray, got {type(img)}'
 
         f_px = self.K[0, 0]
@@ -260,7 +267,36 @@ class DepthEstimator:
             plot_depth_maps(self.cfg, img, depth_tensor, None)
 
         return depth_tensor
+    
+    def _predict_depth_any_rel(self, img):
+        assert isinstance(img, Image.Image), f"Expected PIL image, got {type(img)}"
 
+        result = self.model(img)
+        depth_tensor = result["predicted_depth"]  # relative depth, arbitrary scale
+
+        if self.plot:
+            plot_depth_maps(self.cfg, img, depth_tensor, None)
+
+        return depth_tensor
+    
+    def _predict_moge(self, img):
+        assert isinstance(img, Image.Image), f"Expected PIL image, got {type(img)}"
+        img_np = np.array(img).astype(np.float32) / 255.0
+        img_t = torch.from_numpy(img_np).permute(2, 0, 1).to(self.device)
+
+        with torch.no_grad():
+            output = self.model.infer(img_t)
+
+        # return depth from z-channel of point map
+        points = output["points"]  # (H, W, 3) in camera frame
+        depth = points[..., 2]     # z-channel is metric depth
+
+        if self.plot:
+            plot_depth_maps(self.cfg, img, depth, None)
+
+        return depth
+
+    
     def _predict_metric3d(self, img):
 
         ## Data transformations
@@ -371,15 +407,7 @@ class DepthEstimator:
 
 @hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
 def main(cfg: DictConfig) -> None:
-    log.info(f"Configuration:\n{cfg}")
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    img = load_single_img(cfg)
-
-    de = DepthEstimator(cfg, device, plot=True)
-    de._load_model()
-    depth = de._predict(img)
+    print('This script does nothing on its own')
     
 if __name__ == '__main__':
     main()

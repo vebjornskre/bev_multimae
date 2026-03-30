@@ -4,31 +4,42 @@
 # Data
 radar_raw_path: "data/raw/radar/front_right/"
 imgs_raw_path: "data/raw/camera/front_right/"
+lidar_raw_path: "data/raw/lidar/front_top"
+
 camera_info: "data/raw/camera/front_right/camera_info.npz"
 processed_data_dir: "data/processed"
 mcap_path: "data/raw/agriRobotData.mcap"
 
 # Models
 depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
-depth_model: "unidepth" # can also be metric3d, depth_any, depth_pro, unidepth and zoe (zoe needs upgrade of timm)
+
+# Top metric contender: unidepth (just empirically tested)
+depth_model: "moge"      # can also be metric3d, depth_any, moge
+                         # depth_any_rel, depth_pro, unidepth and zoe (zoe needs upgrade of timm)
 
 # Frame for single predictions (development/visualizations)
 img_frame: 140
 radar_frame: 420
+lidar_frame: 140
 
 # BEV
-resolution: 0.5
-x_bounds: [5, 50, "${resolution}"]
-y_bounds: [-15, 10, "${resolution}"]
+voxel_size: [5, 5, 25]
+hi_res_voxel: [0.1, 0.1, 25]
+point_cloud_range: [0, -10, -5, 40, 30, 20]
 
 # Point cloud specific
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
-rcs_m2_filter: 0          # m^2
-snr_min: 0               # dB
+rcs_m2_filter: 0.13          # m^2
+snr_min: 15                # dB
 min_dist: 0               # m
-max_dist: 120              # m
+max_dist: 120             # m
 elevation_angle: -0.2     # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"
+
+calibration: 'lidar'
+ransac_residual_threshold: 1.5
+fit_beta: False
+num_radar_frames: 6
