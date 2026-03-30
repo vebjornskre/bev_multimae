@@ -8,12 +8,9 @@ import os
 import hydra
 from omegaconf import DictConfig
 
-from bev_multimae.preprocessing.camera.depth import DepthEstimator, load_single_img, cnn_feature_extract
+from bev_multimae.preprocessing.camera.depth import DepthEstimator, cnn_feature_extract
 from bev_multimae.visualization.camera_points_viz import plot_lifted_points
-
-from bev_multimae.preprocessing.mcap_reader import get_camera_transform, get_radar_transform
 from bev_multimae.preprocessing.get_transforms import T_rad_to_ego, T_cam_to_ego, apply_transform
-
 from bev_multimae.preprocessing.camera.camera_depth_calibration import calibrate_depth_with_sensor
 
 log = logging.getLogger(__name__)
@@ -105,7 +102,7 @@ def lift(
     cx, cy = K[0, 2] * (W_dep / W_orig), K[1, 2] * (H_dep / H_orig)
     u_grid, v_grid = np.meshgrid(np.arange(W_dep, dtype=np.float32), np.arange(H_dep, dtype=np.float32))
     ray_lengths = np.sqrt(((u_grid - cx) / fx)**2 + ((v_grid - cy) / fy)**2 + 1.0)
-    depth_np = depth_np * ray_lengths
+    # depth_np = depth_np * ray_lengths
 
     alpha, beta = calibrate_depth_with_sensor(
         cfg, 
@@ -138,7 +135,7 @@ def lift(
     )
     return ego_cam_pts[valid], colors[valid]
 
-@hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     print('This files shoulnd be run at this time')
 

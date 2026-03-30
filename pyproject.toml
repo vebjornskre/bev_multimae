@@ -41,6 +41,7 @@ dependencies = [
     "einops>=0.8.2",
     "wandb>=0.25.1",
     "moge",
+    "pytorch-lightning>=2.6.1",
 ]
 
 [dependency-groups]

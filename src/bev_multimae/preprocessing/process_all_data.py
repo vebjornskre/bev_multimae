@@ -3,13 +3,13 @@ from omegaconf import DictConfig
 import logging
 
 # Local
-from bev_multimae.preprocessing.pipelines import BEVPipeline
+from bev_multimae.preprocessing.data_pipe import BEVPipeline
 from bev_multimae.preprocessing.sync import sync_frames, load_img
 from bev_multimae.visualization.BEV_visualization import plot_bev_comparison, overlay_radar_on_image
 
 log = logging.getLogger(__name__)
 
-@hydra.main(config_path="../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
     
     log.info('Initializing pipeline...')
@@ -32,15 +32,14 @@ def main(cfg: DictConfig):
             cfg,
             img_with_radar,
             output['pts_rad_ego'],
-            output['bev_radar'],
             output['bev_cam_hires'],
-            output['bev_cam_splatted'],
             pipeline.voxel_size,
             pipeline.point_cloud_range,
             pipeline.patch_size_pixels,
             j
         )
         log.info(f'Finished with frame {j}')
+        break
 
 if __name__ == '__main__':
     main()

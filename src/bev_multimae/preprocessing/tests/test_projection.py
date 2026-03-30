@@ -9,7 +9,7 @@ from bev_multimae.preprocessing.sync import sync_frames, load_img, load_lidar, l
 
 
 
-@hydra.main(config_path="../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
 
     cam_info = np.load(cfg.camera_info)

@@ -64,8 +64,6 @@ def filter_radar(radar: dict, thresholds: dict) -> dict:
 
     return {k: v[mask] for k, v in radar.items()}
 
-
-
 def m2_to_dbsm(rcs_m2):
     return 10 * np.log10(np.maximum(rcs_m2, 1e-10))
 
@@ -78,29 +76,30 @@ def build_thresholds(cfg):
         "elevation_angle": (cfg.elevation_angle, -cfg.elevation_angle)
     }
 
-# def radar_to_ego(cfg, radar):
-#     T_radar_to_ego = get_radar_transform(cfg.mcap_path)
-#     pts_radar = np.stack([radar["x"], radar["y"], radar["z"]], axis=-1)
-#     pts_radar = apply_transform(T_radar_to_ego, pts_radar)
-#     pts_radar[:, 1] += 2
-#     return pts_radar
 
 def radar_to_ego(cfg, radar):
     _T_rad_to_ego = T_rad_to_ego(cfg.mcap_path)
 
-    pts_radar = np.stack([radar["x"], radar["y"], radar["z"]], axis=-1)
-    ego_pts_radar = apply_transform(_T_rad_to_ego, pts_radar)
+    features = np.stack([
+        radar["x"],
+        radar["y"],
+        radar["z"],
+        radar["radar_cross_section"],
+        radar["radial_velocity"],
+        radar["signal_noise_ratio"],
+    ], axis=-1)
+
+    pts_xyz = features[:, :3]
+    ego_xyz = apply_transform(_T_rad_to_ego, pts_xyz)
+
+    ego_pts = np.concatenate([ego_xyz, features[:, 3:]], axis=1)
     
-    return ego_pts_radar
+    return ego_pts
 
 
 
-@hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
-
-    path = cfg.radar_raw_path
-    thresholds = build_thresholds(cfg)
-    T = T_rad_to_ego(cfg.mcap_path)
 
     print('This script does nothing on its own')
 

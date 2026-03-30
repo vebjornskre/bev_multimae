@@ -7,13 +7,11 @@ import cv2
 
 from bev_multimae.preprocessing.get_transforms import apply_transform, T_cam_to_ego
 
-def plot_bev_comparison(cfg, img, pts_radar_ego, bev_rad, bev_cam_hires, bev_cam_splatted, voxel_size, point_cloud_range, patch_size_pixels, i):
+def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, point_cloud_range, patch_size_pixels, i):
     save_folder = os.path.join(cfg.plot_folder, "BEV")
     os.makedirs(save_folder, exist_ok=True)
 
-    bev_rad_np = bev_rad[0].cpu().numpy()
     bev_hi_np = bev_cam_hires.permute(1, 2, 0).numpy()
-    bev_spl_np = bev_cam_splatted.permute(1, 2, 0).numpy()
 
     pcr = point_cloud_range
     x_min, y_min, x_max, y_max = pcr[0], pcr[1], pcr[3], pcr[4]
@@ -84,9 +82,9 @@ def overlay_radar_on_image(cfg, img, pts_rad_ego):
     H, W = img_np.shape[:2]
 
     _T_ego_to_cam = np.linalg.inv(T_cam_to_ego(cfg.mcap_path))
-    pts_rad_camFrame = apply_transform(_T_ego_to_cam, pts_rad_ego)
+    pts_xyz = pts_rad_ego[:, :3]
+    pts_rad_camFrame = apply_transform(_T_ego_to_cam, pts_xyz)  
 
-    
     valid = pts_rad_camFrame[:, 2] > 0
     pts_rad_camFrame = pts_rad_camFrame[valid]
     depths = pts_rad_camFrame[:, 2]

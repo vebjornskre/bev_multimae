@@ -405,7 +405,7 @@ class DepthEstimator:
 
         return depth
 
-@hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     print('This script does nothing on its own')
     

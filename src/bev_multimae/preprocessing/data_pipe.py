@@ -10,7 +10,7 @@ from bev_multimae.preprocessing.radar.radar_process_utils import radar_to_ego, f
 from bev_multimae.preprocessing.camera.depth import DepthEstimator
 from bev_multimae.preprocessing.camera.lift import lift
 from bev_multimae.preprocessing.BEV.splat import hard_splat, patchify
-from bev_multimae.preprocessing.BEV.dynamic_pillar import DynamicPillarizer, PointPillarScatter
+from bev_multimae.preprocessing.BEV.dynamic_pillar_vfe import DynamicPillarizer, PointPillarScatter
 from bev_multimae.preprocessing.sync import load_img, load_lidar, load_radar
 from bev_multimae.preprocessing.lidar.lidar_process_utils import lidar_to_ego
 
@@ -36,7 +36,7 @@ class BEVPipeline:
             point_cloud_range=self.point_cloud_range
         )
 
-        self.scatter = PointPillarScatter(grid_size=self.grid_size[:2])
+        self.scatter = PointPillarScatter(grid_size=self.grid_size[:2], num_point_features=6)
 
         self.de = DepthEstimator(cfg, self.device, plot=True)
         self.de._load_model()

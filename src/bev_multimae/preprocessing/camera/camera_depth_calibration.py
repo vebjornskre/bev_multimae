@@ -13,7 +13,7 @@ from omegaconf import DictConfig
 from bev_multimae.visualization.depth_visualization import plot_depth_maps
 from bev_multimae.preprocessing.mcap_reader import apply_transform
 from bev_multimae.preprocessing.get_transforms import T_lid_to_cam, T_rad_to_cam
-from bev_multimae.preprocessing.camera.depth import DepthEstimator, load_single_img
+from bev_multimae.preprocessing.camera.depth import DepthEstimator
 
 log = logging.getLogger(__name__)
 
@@ -35,10 +35,15 @@ def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
     if sensor == "radar":
         radar = {k: v[valid_z] for k, v in pts.items()}
 
+    # uv, _ = cv2.projectPoints(
+    #     pts_cam.astype(np.float64),
+    #     np.zeros(3), np.zeros(3),
+    #     K.astype(np.float64), D.astype(np.float64),
+    # )
     uv, _ = cv2.projectPoints(
         pts_cam.astype(np.float64),
         np.zeros(3), np.zeros(3),
-        K.astype(np.float64), D.astype(np.float64),
+        K.astype(np.float64), None,
     )
     uv = uv.reshape(-1, 2)
 
@@ -100,7 +105,7 @@ def fit_depth_scale(cfg: DictConfig, depth_map: np.ndarray, proj: dict,
         ransac.fit(d_pred.reshape(-1, 1), d_radar)
         alpha = float(ransac.estimator_.coef_[0])
 
-        if cfg.fit_beta == 0: beta = float(ransac.estimator_.intercept_)
+        if cfg.fit_beta: beta = float(ransac.estimator_.intercept_)
         else: beta  = 0.0
 
     else:
@@ -151,7 +156,7 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, plot=F
     K, D = cam_info["K"], cam_info["D"]
     
     if cfg.calibration == 'lidar': T = T_lid_to_cam(cfg.mcap_path)
-    elif cfg.calibtation == 'radar': T = T_rad_to_cam(cfg.mcap_path)
+    elif cfg.calibration == 'radar': T = T_rad_to_cam(cfg.mcap_path)
     else: raise RuntimeError('Set calibration to either "lidar" or "radar"')
 
     proj = project_points_to_image(cfg.calibration, cal_pts, T, K, D, img_hw=img_hw, depth_hw=depth_hw)
@@ -174,31 +179,9 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, plot=F
     return alpha, beta
 
 
-@hydra.main(config_path="../../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    img   = load_single_img(cfg)
-    de    = DepthEstimator(cfg, device, plot=False)
-    de._load_model()
-    depth = de._predict(img)
-
-    depth_np     = depth.squeeze().cpu().numpy() if isinstance(depth, torch.Tensor) else np.squeeze(depth)
-    H_dep, W_dep = depth_np.shape
-    img_np       = np.array(img)
-    H_img, W_img = img_np.shape[:2]
-
-    alpha, beta = calibrate_depth_with_sensor(
-        cfg, depth_np,
-        img_hw=(H_img, W_img),
-        depth_hw=(H_dep, W_dep),
-        plot=True,
-        img=img
-    )
-
-    depth_calibrated = apply_calibration(depth_np, alpha, beta)
-
-    plot_depth_maps(cfg, img, depth_calibrated)
+    print('Script does nothing on its own')
 
 if __name__ == "__main__":
     main()
