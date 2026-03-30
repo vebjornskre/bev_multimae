@@ -77,8 +77,12 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
 def overlay_radar_on_image(cfg, img, pts_rad_ego):
     cam_info = np.load(cfg.camera_info)
     K, D = cam_info['K'], cam_info['D']
+    img_np = np.array(img)
+    img_hw = img_np.shape[:2]
+    new_K, _ = cv2.getOptimalNewCameraMatrix(K, D, (img_hw[1], img_hw[0]), 0) # new
 
     img_np = np.array(img)
+    img_np = cv2.undistort(img_np, K, D)
     H, W = img_np.shape[:2]
 
     _T_ego_to_cam = np.linalg.inv(T_cam_to_ego(cfg.mcap_path))
@@ -89,16 +93,21 @@ def overlay_radar_on_image(cfg, img, pts_rad_ego):
     pts_rad_camFrame = pts_rad_camFrame[valid]
     depths = pts_rad_camFrame[:, 2]
     
+    # uv, _ = cv2.projectPoints(
+    #     pts_rad_camFrame.astype(np.float64),
+    #     np.zeros(3), np.zeros(3),
+    #     K.astype(np.float64), D.astype(np.float64)
+    # )
     uv, _ = cv2.projectPoints(
         pts_rad_camFrame.astype(np.float64),
         np.zeros(3), np.zeros(3),
-        K.astype(np.float64), D.astype(np.float64)
+        new_K.astype(np.float64), None
     )
 
     
     uv = uv.reshape(-1, 2)
     
-    img_np = np.array(img).copy()
+    # img_np = np.array(img).copy()
     H, W = img_np.shape[:2]
     inside = (uv[:,0] >= 0) & (uv[:,0] < W) & (uv[:,1] >= 0) & (uv[:,1] < H)
     uv = uv[inside].astype(int)

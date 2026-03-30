@@ -17,8 +17,8 @@ from bev_multimae.preprocessing.camera.depth import DepthEstimator
 
 log = logging.getLogger(__name__)
 
-def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
 
+def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
     H_img, W_img = img_hw
     H_dep, W_dep = depth_hw
 
@@ -35,11 +35,6 @@ def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
     if sensor == "radar":
         radar = {k: v[valid_z] for k, v in pts.items()}
 
-    # uv, _ = cv2.projectPoints(
-    #     pts_cam.astype(np.float64),
-    #     np.zeros(3), np.zeros(3),
-    #     K.astype(np.float64), D.astype(np.float64),
-    # )
     uv, _ = cv2.projectPoints(
         pts_cam.astype(np.float64),
         np.zeros(3), np.zeros(3),
@@ -47,13 +42,8 @@ def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
     )
     uv = uv.reshape(-1, 2)
 
-    u = uv[:, 0] * (W_dep / W_img)
-    v = uv[:, 1] * (H_dep / H_img)
-
-    inside = (
-        (u >= 0) & (u < W_dep - 1) &
-        (v >= 0) & (v < H_dep - 1)
-    )
+    u, v = uv[:, 0], uv[:, 1]
+    inside = (u >= 0) & (u < W_dep - 1) & (v >= 0) & (v < H_dep - 1)
 
     out = {
         "u": u[inside],
@@ -74,19 +64,9 @@ def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
 
 def fit_depth_scale(cfg: DictConfig, depth_map: np.ndarray, proj: dict,
                     use_ransac: bool = True) -> tuple[float, float]:
-    
-    u, v    = proj["u"], proj["v"]
+    u, v = proj["u"], proj["v"]
 
-    # We use bilinear interpolation so we can sample depth at float (u, v)
-    # instead of rounding to pixels, which makes the calibration smoother.
-    coords = np.vstack([v, u])
-    d_pred = map_coordinates(
-        depth_map,
-        coords, 
-        order=1, # bilinnear
-        mode='nearest'
-        )
-
+    d_pred = map_coordinates(depth_map, np.vstack([v, u]), order=1, mode='nearest')
     d_radar = proj["depth_cam"].astype(np.float64)
 
     valid = (d_pred > 0.01) & np.isfinite(d_pred) & np.isfinite(d_radar)
@@ -94,7 +74,7 @@ def fit_depth_scale(cfg: DictConfig, depth_map: np.ndarray, proj: dict,
 
     if len(d_pred) < 4:
         raise ValueError(f"Too few valid correspondences: {len(d_pred)}")
-    
+
     if use_ransac:
         ransac = RANSACRegressor(
             LinearRegression(fit_intercept=cfg.fit_beta),
@@ -104,15 +84,11 @@ def fit_depth_scale(cfg: DictConfig, depth_map: np.ndarray, proj: dict,
         )
         ransac.fit(d_pred.reshape(-1, 1), d_radar)
         alpha = float(ransac.estimator_.coef_[0])
-
-        if cfg.fit_beta: beta = float(ransac.estimator_.intercept_)
-        else: beta  = 0.0
-
+        beta = float(ransac.estimator_.intercept_) if cfg.fit_beta else 0.0
     else:
         A = np.stack([d_pred, np.ones_like(d_pred)], axis=1)
         (alpha, beta), _, _, _ = np.linalg.lstsq(A, d_radar, rcond=None)
         alpha, beta = float(alpha), float(beta)
-
 
     return alpha, beta
 
@@ -133,6 +109,7 @@ def visualize_projection(img: np.ndarray, proj: dict, save_path: str):
     plt.savefig(os.path.join(save_path, 'projection_viz'))
     plt.close()
 
+
 def visualize_calibration_fit(d_pred: np.ndarray, d_radar: np.ndarray,
                                alpha: float, beta: float, save_path: str):
     finite = np.isfinite(d_pred) & np.isfinite(d_radar)
@@ -150,11 +127,11 @@ def visualize_calibration_fit(d_pred: np.ndarray, d_radar: np.ndarray,
     plt.savefig(os.path.join(save_path, 'calibration_fit_viz'))
     plt.close()
 
+
 def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, plot=False, img=None):
-   
     cam_info = np.load(cfg.camera_info)
     K, D = cam_info["K"], cam_info["D"]
-    
+
     if cfg.calibration == 'lidar': T = T_lid_to_cam(cfg.mcap_path)
     elif cfg.calibration == 'radar': T = T_rad_to_cam(cfg.mcap_path)
     else: raise RuntimeError('Set calibration to either "lidar" or "radar"')
@@ -164,14 +141,10 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, plot=F
     alpha, beta = fit_depth_scale(cfg, depth_np, proj, use_ransac=True)
 
     if plot and img is not None:
-        u, v   = proj["u"], proj["v"]
-
-        coords = np.vstack([v, u])
-        d_pred = map_coordinates(depth_np, coords, order=1, mode='nearest')
-
-        valid  = d_pred > 0.01
+        u, v = proj["u"], proj["v"]
+        d_pred = map_coordinates(depth_np, np.vstack([v, u]), order=1, mode='nearest')
+        valid = d_pred > 0.01
         H_dep, W_dep = depth_hw
-
         img_np = np.array(img)
         visualize_projection(cv2.resize(img_np, (W_dep, H_dep)), proj, cfg.plot_folder)
         visualize_calibration_fit(d_pred[valid], proj["depth_cam"][valid], alpha, beta, cfg.plot_folder)
