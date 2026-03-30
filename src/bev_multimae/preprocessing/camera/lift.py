@@ -15,7 +15,7 @@ from bev_multimae.preprocessing.camera.camera_depth_calibration import calibrate
 log = logging.getLogger(__name__)
 
 
-def project_2D_3D(cfg, depth, T, K, D, img_size=None):
+def project_2D_3D(cfg, depth, T, K, img_size=None):
     if isinstance(depth, torch.Tensor):
         depth_np = depth.squeeze().cpu().numpy()
     else:
@@ -31,7 +31,6 @@ def project_2D_3D(cfg, depth, T, K, D, img_size=None):
 
     u, v = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
     pixel_coords = np.stack([u.ravel(), v.ravel()], axis=-1).reshape(-1, 1, 2)
-
     norm_coords = cv2.undistortPoints(pixel_coords, K, None).reshape(H, W, 2)
 
     rays = np.concatenate([norm_coords, np.ones((H, W, 1), dtype=np.float32)], axis=-1)
@@ -53,8 +52,9 @@ def lift(cfg, img, cal_pts, de: DepthEstimator = None, plot=False) -> tuple[np.n
     depth = de._predict(img)
 
     img_np = np.array(img)
-    W_orig, H_orig = img_np.shape[1], img_np.shape[0]
-    img_size = (W_orig, H_orig)
+    H, W = img_np.shape[:2]
+    K_new, _ = cv2.getOptimalNewCameraMatrix(K, D, (W, H), 0)
+    img_size = (W, H)
 
     _T_cam_to_ego = T_cam_to_ego(cfg.mcap_path)
 
@@ -63,7 +63,7 @@ def lift(cfg, img, cal_pts, de: DepthEstimator = None, plot=False) -> tuple[np.n
     alpha, beta = calibrate_depth_with_sensor(
         cfg,
         depth_np,
-        img_hw=(H_orig, W_orig),
+        img_hw=(H, W),
         depth_hw=depth_np.shape,
         cal_pts=cal_pts,
         plot=True,
@@ -72,7 +72,7 @@ def lift(cfg, img, cal_pts, de: DepthEstimator = None, plot=False) -> tuple[np.n
 
     depth = torch.from_numpy(alpha * depth_np + beta)
 
-    ego_cam_pts = project_2D_3D(cfg, depth, _T_cam_to_ego, K, D, img_size=img_size)
+    ego_cam_pts = project_2D_3D(cfg, depth, _T_cam_to_ego, K_new, img_size=img_size)
 
     img_np = img_np.astype(np.float32) / 255.0
     H, W = ego_cam_pts.shape[:2]

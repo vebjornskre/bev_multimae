@@ -1,6 +1,5 @@
 import numpy as np
 import cv2
-import torch
 import logging
 import matplotlib.pyplot as plt
 import os
@@ -10,15 +9,13 @@ from sklearn.linear_model import RANSACRegressor, LinearRegression
 import hydra
 from omegaconf import DictConfig
 
-from bev_multimae.visualization.depth_visualization import plot_depth_maps
 from bev_multimae.preprocessing.mcap_reader import apply_transform
 from bev_multimae.preprocessing.get_transforms import T_lid_to_cam, T_rad_to_cam
-from bev_multimae.preprocessing.camera.depth import DepthEstimator
 
 log = logging.getLogger(__name__)
 
 
-def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
+def project_points_to_image(sensor, pts, T, K, img_hw, depth_hw):
     H_img, W_img = img_hw
     H_dep, W_dep = depth_hw
 
@@ -28,7 +25,6 @@ def project_points_to_image(sensor, pts, T, K, D, img_hw, depth_hw):
         pts_xyz = pts
 
     pts_cam = apply_transform(T, pts_xyz)
-
     valid_z = pts_cam[:, 2] > 0
     pts_cam = pts_cam[valid_z]
 
@@ -132,11 +128,13 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, plot=F
     cam_info = np.load(cfg.camera_info)
     K, D = cam_info["K"], cam_info["D"]
 
+    K_new, _ = cv2.getOptimalNewCameraMatrix(K, D, (img_hw[1], img_hw[0]), 0)
+
     if cfg.calibration == 'lidar': T = T_lid_to_cam(cfg.mcap_path)
     elif cfg.calibration == 'radar': T = T_rad_to_cam(cfg.mcap_path)
     else: raise RuntimeError('Set calibration to either "lidar" or "radar"')
 
-    proj = project_points_to_image(cfg.calibration, cal_pts, T, K, D, img_hw=img_hw, depth_hw=depth_hw)
+    proj = project_points_to_image(cfg.calibration, cal_pts, T, K_new, img_hw=img_hw, depth_hw=depth_hw)
 
     alpha, beta = fit_depth_scale(cfg, depth_np, proj, use_ransac=True)
 
