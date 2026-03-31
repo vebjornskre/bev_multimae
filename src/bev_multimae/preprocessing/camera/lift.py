@@ -60,7 +60,11 @@ def lift(cfg, img, cal_pts, de: DepthEstimator = None, plot=False) -> tuple[np.n
 
     depth_np = depth.squeeze().cpu().numpy() if isinstance(depth, torch.Tensor) else np.squeeze(depth)
 
-    alpha, beta = calibrate_depth_with_sensor(
+    cam_info = np.load(cfg.camera_info) 
+    K, D = cam_info['K'], cam_info['D'] 
+    H_dep, W_dep = img_size
+
+    depth_completed = calibrate_depth_with_sensor(
         cfg,
         depth_np,
         img_hw=(H, W),
@@ -70,8 +74,7 @@ def lift(cfg, img, cal_pts, de: DepthEstimator = None, plot=False) -> tuple[np.n
         img=img
     )
 
-    depth = torch.from_numpy(alpha * depth_np + beta)
-
+    depth = torch.from_numpy(depth_completed)
     ego_cam_pts = project_2D_3D(cfg, depth, _T_cam_to_ego, K_new, img_size=img_size)
 
     img_np = img_np.astype(np.float32) / 255.0

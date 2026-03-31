@@ -10,7 +10,7 @@ from bev_multimae.preprocessing.radar.radar_process_utils import radar_to_ego, f
 from bev_multimae.preprocessing.camera.depth import DepthEstimator
 from bev_multimae.preprocessing.camera.lift import lift
 from bev_multimae.preprocessing.BEV.splat import hard_splat, patchify
-from bev_multimae.preprocessing.BEV.dynamic_pillar_vfe import DynamicPillarizer, PointPillarScatter
+from bev_multimae.preprocessing.BEV.dynamic_pillar_vfe import DynamicPillarizer, PointPillarScatter, build_bev_target, plot_bev_target
 from bev_multimae.preprocessing.sync import load_img, load_lidar, load_radar
 from bev_multimae.preprocessing.lidar.lidar_process_utils import lidar_to_ego
 
@@ -54,14 +54,15 @@ class BEVPipeline:
         radar = self._merge_radar(frame['rad'])
         lidar = load_lidar(frame['lid'])
 
-        bev_rad, pts_rad_ego, pts_rad_sframe = self._process_radar(radar)
+        batch_dict_rad, bev_target, pts_rad_ego, pts_rad_sframe = self._process_radar(radar)
         pts_lidar, pts_lid_sframe = self._process_lidar(lidar)
 
         cal_pts = lidar if self.cfg.calibration == 'lidar' else radar
         cam_patches, bev_cam_splatted, bev_cam_hires, pts_cam_ego = self._process_img(img, cal_pts)
 
         return {
-            "bev_radar":         bev_rad,
+            "batch_dict_rad":    batch_dict_rad,
+            "bev_radar_target":  bev_target,
             "bev_cam":           cam_patches,
             "bev_cam_hires":     bev_cam_hires,
             "bev_cam_splatted":  bev_cam_splatted,
@@ -91,10 +92,12 @@ class BEVPipeline:
         points = torch.cat([batch_idx_rad, points_xyz], dim=1)
 
         batch_dict_rad = self.pillarizer.forward(points)
-        batch_dict_rad = self.scatter(batch_dict_rad)
-        bev_rad = batch_dict_rad["spatial_features"]
 
-        return bev_rad, ego_radar, radar
+        bev_target = build_bev_target(batch_dict_rad, grid_size=self.grid_size[:2])
+        plot_bev_target(self.cfg, bev_target, name="radar_bev")
+
+        
+        return batch_dict_rad, bev_target, ego_radar, radar
 
     def _process_lidar(self, lidar):
         ego_lidar = lidar_to_ego(self.cfg, lidar)

@@ -23,23 +23,31 @@ radar_frame: 420
 lidar_frame: 140
 
 # BEV
-voxel_size: [5, 5, 25]
-hi_res_voxel: [0.1, 0.1, 25]
-point_cloud_range: [0, -10, -5, 40, 30, 20]
+# Original
+# voxel_size: [2.5, 2.5, 25]
+# point_cloud_range: [0, -10, -5, 40, 30, 20]
+# Original end
 
-# Point cloud specific
+# voxel_size: [1.5, 1.5, 25]
+# point_cloud_range: [0, -12, -5, 32, 12, 20]
+voxel_size: [1.5, 1.5, 25]
+point_cloud_range: [3, -6, -5, 27, 21, 20]
+hi_res_voxel: [0.1, 0.1, 25]
+
+# Point cloud specific (radar)
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
 rcs_m2_filter: 0.13          # m^2
-snr_min: 15                # dB
-min_dist: 0               # m
-max_dist: 120             # m
-elevation_angle: -0.2     # rad
+snr_min: 15                  # dB
+min_dist: 0                  # m
+max_dist: 120                # m
+elevation_angle: -0.2        # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"
 
-calibration: 'lidar'
+calibration: 'lidar' # can also be radar or lidar
 ransac_residual_threshold: 1.5
-fit_beta: False
+fit_beta: True
 num_radar_frames: 6
+interp_depth_residuals: False # if depth completion is False, then scale (alpha, beta) will be fitted with ransac

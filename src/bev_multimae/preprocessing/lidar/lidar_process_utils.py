@@ -24,7 +24,7 @@ def load_and_process_lidar(cfg: DictConfig) -> np.ndarray:
     # remove vehicle body and ground clutter
     valid = (
         (xyz[:, 0] > 3.0) &   # further in front
-        (xyz[:, 2] > -0.5) &  # not below ground
+        (xyz[:, 2] > -3.0) &  # not below ground
         (xyz[:, 2] < 4.0)     # not above sensor height
     )
 

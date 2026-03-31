@@ -68,6 +68,7 @@ class DepthEstimator:
 
         cam_info = np.load(cfg.camera_info)
         self.K = cam_info['K']
+        self.D = cam_info['D']
         self.plot = plot
 
     def _load_model(self):
@@ -284,12 +285,14 @@ class DepthEstimator:
         img_np = np.array(img).astype(np.float32) / 255.0
         img_t = torch.from_numpy(img_np).permute(2, 0, 1).to(self.device)
 
-        with torch.no_grad():
-            output = self.model.infer(img_t)
+        W = img_np.shape[1]
+        fov_x = float(np.degrees(2 * np.arctan(W / (2 * self.K[0, 0]))))
 
-        # return depth from z-channel of point map
-        points = output["points"]  # (H, W, 3) in camera frame
-        depth = points[..., 2]     # z-channel is metric depth
+        with torch.no_grad():
+            output = self.model.infer(img_t, fov_x=fov_x)
+
+        points = output["points"]
+        depth = points[..., 2]
 
         if self.plot:
             plot_depth_maps(self.cfg, img, depth, None)

@@ -34,6 +34,10 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
         h_lines = [[(0, y), (x_range, y)] for y in np.arange(0, y_range + step_m, step_m)]
         ax.add_collection(LineCollection(v_lines + h_lines, colors=color, linewidths=lw, alpha=0.8, zorder=2))
 
+    height = pts_radar_ego[:, 1]
+    valid = height > -3
+    pts_radar_ego = pts_radar_ego[valid]
+
     px_rad = pts_radar_ego[:, 0] - x_min
     py_rad = pts_radar_ego[:, 1] - y_min
 
@@ -93,11 +97,7 @@ def overlay_radar_on_image(cfg, img, pts_rad_ego):
     pts_rad_camFrame = pts_rad_camFrame[valid]
     depths = pts_rad_camFrame[:, 2]
     
-    # uv, _ = cv2.projectPoints(
-    #     pts_rad_camFrame.astype(np.float64),
-    #     np.zeros(3), np.zeros(3),
-    #     K.astype(np.float64), D.astype(np.float64)
-    # )
+ 
     uv, _ = cv2.projectPoints(
         pts_rad_camFrame.astype(np.float64),
         np.zeros(3), np.zeros(3),
