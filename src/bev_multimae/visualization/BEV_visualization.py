@@ -144,3 +144,55 @@ def save_ply_color(fname, pts, color):
         # points
         for p in pts:
             f.write(f"{p[0]} {p[1]} {p[2]} {r} {g} {b}\n")
+
+
+def plot_bev_target(cfg, bev, name="bev_target"):
+    save_folder = os.path.join(cfg.plot_folder, "BEV_target")
+    os.makedirs(save_folder, exist_ok=True)
+
+    bev = bev[0].detach().cpu().numpy()
+    C = bev.shape[0]
+
+    titles = [
+        "Occupancy",
+        "Density (log count)",
+        "Height (mean z)",
+        "Velocity (mean)",
+        "RCS (mean)",
+        "Height (var)",
+        "Velocity (var)",
+        "RCS (var)",
+        "SNR (mean)",
+    ]
+
+    cols = 3
+    rows = int(np.ceil(C / cols))
+
+    fig, axs = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    axs = np.array(axs).reshape(-1)
+
+    for i in range(C):
+        ch = bev[i]
+
+        if i == 0:
+            vmin, vmax = 0.0, 1.0
+        else:
+            vmin = float(np.min(ch))
+            vmax = float(np.max(ch))
+            if vmax - vmin < 1e-6:
+                vmax = vmin + 1e-6
+
+        im = axs[i].imshow(ch, origin='lower', cmap='gray', vmin=vmin, vmax=vmax)
+        axs[i].set_title(titles[i] if i < len(titles) else f"Channel {i}")
+        fig.colorbar(im, ax=axs[i], fraction=0.046)
+        axs[i].set_xlabel("Forward")
+        axs[i].set_ylabel("Left")
+
+    for i in range(C, len(axs)):
+        axs[i].axis("off")
+
+    plt.tight_layout()
+
+    save_path = os.path.join(save_folder, f"{name}.png")
+    plt.savefig(save_path)
+    plt.close()

@@ -13,7 +13,7 @@ mcap_path: "data/raw/agriRobotData.mcap"
 # Models
 depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
 
-# Top metric contender: unidepth (just empirically tested)
+# Top metric contender: moge
 depth_model: "moge"      # can also be metric3d, depth_any, moge
                          # depth_any_rel, depth_pro, unidepth and zoe (zoe needs upgrade of timm)
 
@@ -24,17 +24,21 @@ lidar_frame: 140
 
 # BEV
 # Original
-# voxel_size: [2.5, 2.5, 25]
-# point_cloud_range: [0, -10, -5, 40, 30, 20]
+voxel_size: [2.5, 2.5, 25]
+point_cloud_range: [0, -10, -5, 40, 30, 20]
 # Original end
 
-# voxel_size: [1.5, 1.5, 25]
-# point_cloud_range: [0, -12, -5, 32, 12, 20]
-voxel_size: [1.5, 1.5, 25]
-point_cloud_range: [3, -6, -5, 27, 21, 20]
-hi_res_voxel: [0.1, 0.1, 25]
 
-# Point cloud specific (radar)
+# # Zoomed in (no treeline)
+# voxel_size: [1.5, 1.5, 25]
+# point_cloud_range: [3, -6, -5, 27, 21, 20]
+
+
+hi_res_voxel: [0.1, 0.1, 25]
+cam_channels: 3 # RBG
+rad_channels: 9
+
+# Point cloud specific 
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
 rcs_m2_filter: 0.13          # m^2
@@ -46,8 +50,11 @@ elevation_angle: -0.2        # rad
 # Plot/figure folder
 plot_folder: "reports/figures/"
 
+# Depth calibration
 calibration: 'lidar' # can also be radar or lidar
 ransac_residual_threshold: 1.5
 fit_beta: True
-num_radar_frames: 6
 interp_depth_residuals: False # if depth completion is False, then scale (alpha, beta) will be fitted with ransac
+
+# Number of radar scans to be used
+num_radar_frames: 6 # 3 scans per image 

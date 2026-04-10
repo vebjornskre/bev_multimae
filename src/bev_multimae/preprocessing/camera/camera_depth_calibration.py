@@ -185,12 +185,16 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, plot=F
     if cfg.interp_depth_residuals:
         depth_cal = interp_depth_residuals(depth_np, proj, cfg, plot=True)
 
+        log.info('Calibrating with interpolation')
+
         if plot and img is not None:
             H_dep, W_dep = depth_hw
             img_np = np.array(img)
             visualize_projection(cv2.resize(img_np, (W_dep, H_dep)), proj, cfg.plot_folder)
 
         return depth_cal
+    
+    log.info('Calibrating with alhpa and beta')
 
     alpha, beta = fit_depth_scale(cfg, depth_np, proj, use_ransac=True)
 

@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from PIL import Image
 import os
 import glob
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 def plot_depth_maps(cfg, img, depth, feat=None):
 
@@ -86,7 +88,9 @@ def plot_depth_maps(cfg, img, depth, feat=None):
         else:
             depth_np = depth
         im = axes[1].imshow(depth_np, cmap='plasma')
-        plt.colorbar(im, ax=axes[1], label='Depth (m)')
+        divider = make_axes_locatable(axes[1])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im, cax=cax, label='Depth (m)')
         axes[1].set_title("Depth Map")
         axes[1].axis("off")
 

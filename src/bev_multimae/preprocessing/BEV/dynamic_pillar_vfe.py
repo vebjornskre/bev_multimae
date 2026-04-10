@@ -75,14 +75,12 @@ class DynamicPillarizer:
 
         return {
             "points": points,
-            "points_xyz": points_xyz,
             "pillar_coords": pillar_coords,
             "pillar_inv": unq_inv,
             "pillar_counts": unq_cnt,
             "f_cluster": f_cluster,
             "f_center": f_center,
         }
-
 
 class PFNLayer(nn.Module):
 
@@ -113,7 +111,7 @@ class PFNLayer(nn.Module):
 
 class PointPillarScatter(nn.Module):
 
-    def __init__(self, grid_size, num_point_features, num_filters=(64,),
+    def __init__(self, grid_size, num_point_features, num_filters,
                  use_norm=True, use_absolute_xyz=True, with_distance=False):
         super().__init__()
         self.nx, self.ny = grid_size
@@ -135,9 +133,9 @@ class PointPillarScatter(nn.Module):
         self.out_features = num_filters[-1]
 
     def forward(self, batch_dict):
-        points      = batch_dict['points']
-        f_cluster   = batch_dict['f_cluster']
-        f_center    = batch_dict['f_center']
+        points        = batch_dict['points']
+        f_cluster     = batch_dict['f_cluster']
+        f_center      = batch_dict['f_center']
         pillar_inv    = batch_dict['pillar_inv']
         pillar_coords = batch_dict['pillar_coords']
 
@@ -168,71 +166,70 @@ class PointPillarScatter(nn.Module):
         batch_dict['spatial_features'] = spatial_features
         return batch_dict
 
-def build_bev_target(batch_dict, grid_size):
-    pillar_coords = batch_dict['pillar_coords']
-    pillar_counts = batch_dict['pillar_counts']
-    points_xyz = batch_dict['points_xyz']
-    pillar_inv = batch_dict['pillar_inv']
+def build_bev_target(batch_dict, grid_size, num_rad_channels):
+    pc  = batch_dict['pillar_coords']
+    cnt = batch_dict['pillar_counts']
+    inv = batch_dict['pillar_inv']
+    pts = batch_dict['points']
 
     nx, ny = grid_size
-    B = int(pillar_coords[:, 0].max().item()) + 1
+    B = int(pc[:, 0].max().item()) + 1
 
-    bev = torch.zeros(B, 3, ny, nx, device=points_xyz.device)
+    bev = torch.zeros(B, num_rad_channels, ny, nx, device=pts.device)
 
-    b = pillar_coords[:, 0].long()
-    y = pillar_coords[:, 1].long()
-    x = pillar_coords[:, 2].long()
+    b = pc[:, 0].long()
+    y = pc[:, 1].long()
+    x = pc[:, 2].long()
 
-    # occupancy
     bev[b, 0, y, x] = 1.0
+    bev[b, 1, y, x] = torch.log1p(cnt.float())
 
-    # density
-    bev[b, 1, y, x] = torch.log1p(pillar_counts.float())
+    n = cnt.shape[0]
 
-    # height (mean z)
-    num_pillars = pillar_counts.shape[0]
-    z_sum = torch.zeros(num_pillars, device=points_xyz.device)
-    z_sum.index_add_(0, pillar_inv, points_xyz[:, 2])
-    z_mean = z_sum / pillar_counts
+    z = pts[:, 3]  # col 3 = z
+    z_sum = torch.zeros(n, device=z.device)
+    z_sum.index_add_(0, inv, z)
+    z_mean = z_sum / cnt
+
+    z_sq = torch.zeros(n, device=z.device)
+    z_sq.index_add_(0, inv, z * z)
+    z_var = z_sq / cnt - z_mean * z_mean
+
     bev[b, 2, y, x] = z_mean
+    bev[b, 5, y, x] = z_var
+
+    vel = pts[:, 5]  
+    v_sum = torch.zeros(n, device=vel.device)
+    v_sum.index_add_(0, inv, vel)
+    v_mean = v_sum / cnt
+
+    v_sq = torch.zeros(n, device=vel.device)
+    v_sq.index_add_(0, inv, vel * vel)
+    v_var = v_sq / cnt - v_mean * v_mean
+
+    bev[b, 3, y, x] = v_mean
+    bev[b, 6, y, x] = v_var
+
+    rcs = pts[:, 4] 
+    r_sum = torch.zeros(n, device=rcs.device)
+    r_sum.index_add_(0, inv, rcs)
+    r_mean = r_sum / cnt
+
+    r_sq = torch.zeros(n, device=rcs.device)
+    r_sq.index_add_(0, inv, rcs * rcs)
+    r_var = r_sq / cnt - r_mean * r_mean
+
+    bev[b, 4, y, x] = r_mean
+    bev[b, 7, y, x] = r_var
+
+    snr = pts[:, 6]
+    s_sum = torch.zeros(n, device=snr.device)
+    s_sum.index_add_(0, inv, snr)
+    s_mean = s_sum / cnt
+
+    bev[b, 8, y, x] = s_mean
 
     return bev
-
-
-def plot_bev_target(cfg, bev, name="bev_target"):
-
-    save_folder = os.path.join(cfg.plot_folder, "BEV_target")
-    os.makedirs(save_folder, exist_ok=True)
-
-    bev = bev[0].detach().cpu()
-
-    occ = bev[0].numpy()
-    dens = bev[1].numpy()
-    h = bev[2].numpy()
-
-    fig, axs = plt.subplots(1, 3, figsize=(14, 4))
-
-    im0 = axs[0].imshow(occ, origin='lower')
-    axs[0].set_title("Occupancy")
-    fig.colorbar(im0, ax=axs[0], fraction=0.046)
-
-    im1 = axs[1].imshow(dens, origin='lower')
-    axs[1].set_title("Density (log count)")
-    fig.colorbar(im1, ax=axs[1], fraction=0.046)
-
-    im2 = axs[2].imshow(h, origin='lower')
-    axs[2].set_title("Height (mean z)")
-    fig.colorbar(im2, ax=axs[2], fraction=0.046)
-
-    for ax in axs:
-        ax.set_xlabel("Forward")
-        ax.set_ylabel("Left")
-
-    plt.tight_layout()
-
-    save_path = os.path.join(save_folder, f"{name}.png")
-    plt.savefig(save_path)
-    plt.close()
 
 
 @hydra.main(config_path="../../../../configs", config_name="config", version_base=None)

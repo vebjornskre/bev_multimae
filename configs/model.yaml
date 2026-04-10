@@ -1,0 +1,4 @@
+# Parameters for model spesifications
+
+dim_tokens: 128    # embedding/token dimention
+num_vfe_features: [64]

@@ -1,1 +1,0 @@
-# Ecoder of the model
