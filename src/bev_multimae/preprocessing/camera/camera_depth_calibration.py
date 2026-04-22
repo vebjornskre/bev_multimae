@@ -125,12 +125,14 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, T_lid_
         depth_hw=depth_hw
     )
 
-    log.info(f"Calibration depth range: min={proj['depth_cam'].min():.1f}m  max={proj['depth_cam'].max():.1f}m  median={np.median(proj['depth_cam']):.1f}m")
+    if cfg.logging:
+        log.info(f"Calibration depth range: min={proj['depth_cam'].min():.1f}m  max={proj['depth_cam'].max():.1f}m  median={np.median(proj['depth_cam']):.1f}m")
 
     if cfg.interp_depth_residuals:
         depth_cal = interp_depth_residuals(depth_np, proj, cfg, plot=cfg.plotting)
 
-        log.info('Calibrating with interpolation')
+        if cfg.logging:
+            log.info('Calibrating with interpolation')
 
         if plot and img is not None:
             H_dep, W_dep = depth_hw
@@ -140,11 +142,13 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, T_lid_
 
         return depth_cal
     
-    log.info('Calibrating with alhpa and beta')
+    if cfg.logging:
+        log.info('Calibrating with alhpa and beta')
 
     alpha, beta = fit_depth_scale(cfg, depth_np, proj, use_ransac=True)
 
-    # log.info(f'Aplha: {alpha}, Beat: {beta}')
+    if cfg.logging:
+        log.info(f'Aplha: {alpha}, Beat: {beta}')
 
     depth_cal = depth_np * alpha + beta
 

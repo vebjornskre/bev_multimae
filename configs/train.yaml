@@ -1,3 +1,7 @@
 # Traning specific parameters
 
-batch_size: 10
+batch_size: 128
+lr: 1e-5
+max_epochs: 10
+min_epochs: 1
+num_encoded_tokens: 156

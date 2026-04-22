@@ -40,8 +40,8 @@ TF_STATIC_FILES = {
 
 def get_mcap_start_time(path: str) -> datetime:
     with open(path, "rb") as f:
-        reader = make_reader(f, decoder_factories=[DecoderFactory()])
-        for _, _, message, _ in reader.iter_decoded_messages():
+        reader = make_reader(f)
+        for _, _, message in reader.iter_messages():
             return datetime.fromtimestamp(message.log_time / 1e9, tz=timezone.utc)
     raise RuntimeError(f"No messages in {path}")
 
@@ -99,9 +99,7 @@ def load_transforms(mcap_path: str) -> dict:
     transforms = {}
     with open(mcap_path, "rb") as f:
         reader = make_reader(f, decoder_factories=[DecoderFactory()])
-        for _, channel, _, ros_msg in reader.iter_decoded_messages():
-            if channel.topic != "/tf_static":
-                continue
+        for _, channel, _, ros_msg in reader.iter_decoded_messages(topics=["/tf_static"]):
             for tf in ros_msg.transforms:
                 transforms[(tf.header.frame_id, tf.child_frame_id)] = transform_to_matrix(tf.transform)
     return transforms

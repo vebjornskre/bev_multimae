@@ -15,7 +15,7 @@ def _normalize_patch_size(patch_size_pixels):
         patch_h_px = patch_w_px = patch_size_pixels
     return patch_h_px, patch_w_px
 
-def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, point_cloud_range, patch_size_pixels, i):
+def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, point_cloud_range, patch_size_pixels, event, i):
     save_folder = os.path.join(cfg.plot_folder, "BEV")
     os.makedirs(save_folder, exist_ok=True)
 
@@ -93,7 +93,7 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
     ax_img.axis("off")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(save_folder, f"video/bev_overlay_{i}.png"), dpi=150)
+    plt.savefig(os.path.join(save_folder, f"video/{event}_bev_overlay_{i}.png"), dpi=150)
     plt.close(fig_overlay)
 
 

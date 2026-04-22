@@ -2,6 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+def minmax_per_channel(img):
+    out = np.zeros_like(img)
+    for c in range(img.shape[-1]):
+        mn, mx = img[..., c].min(), img[..., c].max()
+        out[..., c] = (img[..., c] - mn) / (mx - mn + 1e-6)
+    return out
+
 def viz_preds(preds, batch, folder):
     save_folder = os.path.join(folder, 'predictions')
     os.makedirs(save_folder, exist_ok=True)
@@ -29,14 +36,21 @@ def viz_preds(preds, batch, folder):
 
         else:  # cam_bev
             pred = v[0].detach().cpu().permute(1, 2, 0).numpy()
-            inp = batch["cam_bev"][0].cpu().permute(1, 2, 0).numpy()
+            inp  = batch["cam_bev"][0].cpu().permute(1, 2, 0).numpy()
 
-            print(pred.mean(), pred.std())
+            print(f"Raw pred - mean: {pred.mean():.4f}, std: {pred.std():.4f}, min: {pred.min():.4f}, max: {pred.max():.4f}")
+            print(f"Raw inp  - mean: {inp.mean():.4f}, std: {inp.std():.4f}, min: {inp.min():.4f}, max: {inp.max():.4f}")
 
-            pred = (pred - pred.min()) / (pred.max() - pred.min() + 1e-6)
-            inp  = (inp  - inp.min())  / (inp.max()  - inp.min()  + 1e-6)
+            pred_denorm = pred * imagenet_std + imagenet_mean
+            inp_denorm  = inp  * imagenet_std + imagenet_mean
+            
+            print(f"After denorm pred - mean: {pred_denorm.mean():.4f}, std: {pred_denorm.std():.4f}, min: {pred_denorm.min():.4f}, max: {pred_denorm.max():.4f}")
+            print(f"After denorm inp  - mean: {inp_denorm.mean():.4f}, std: {inp_denorm.std():.4f}, min: {inp_denorm.min():.4f}, max: {inp_denorm.max():.4f}")
 
-            print(pred.mean(), pred.std())
+            pred = minmax_per_channel(pred_denorm)
+            inp  = minmax_per_channel(inp_denorm)
+
+            print(f"After minmax pred - mean: {pred.mean():.4f}, std: {pred.std():.4f}, min: {pred.min():.4f}, max: {pred.max():.4f}")
 
             fig, axes = plt.subplots(1, 2, figsize=(10, 5))
             axes[0].imshow(inp[..., :3], origin="lower")

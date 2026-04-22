@@ -1,0 +1,192 @@
+mcap_extract_path: data/raw/mcap_extract
+radar_raw_path: data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/radar/front_right/
+imgs_raw_path: data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/camera/front_right/
+lidar_raw_path: data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/lidar/front_top
+transforms_path: data/transforms
+camera_info: data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/camera/front_right/camera_info.npz
+processed_data_dir: data/processed
+mcap_path: data/raw/bags/evt_0e8RBfDxhnHKvZ7a.mcap
+bags_path: data/raw/bags
+depth_pro_weights: /work3/s242723/.cache/depth-pro/depth_pro.pt
+depth_model: moge
+img_frame: 140
+radar_frame: 420
+lidar_frame: 140
+voxel_size:
+- 1.5
+- 1.5
+- 25
+point_cloud_range:
+- 1.5
+- -6
+- -5
+- 28.5
+- 21
+- 20
+hi_res_voxel:
+- 0.1
+- 0.1
+- 25
+cam_channels: 3
+rad_channels: 9
+lb_percent:
+- 0
+- 5
+- 0
+ub_percent:
+- 90
+- 95
+- 90
+rcs_m2_filter: 0.0
+snr_min: 10
+min_dist: 5
+max_dist: 120
+elevation_angle: -0.2
+plot_folder: reports/figures/
+plotting: false
+meshlab_cam: false
+calibration: lidar
+ransac_residual_threshold: 1.5
+fit_beta: true
+interp_depth_residuals: true
+num_radar_frames: 6
+logging: false
+dim_tokens: 128
+num_vfe_features:
+- 64
+depth: 12
+num_heads: 8
+model_folder: model_checkpoints/
+batch_size: 1
+lr: 5.0e-05
+max_epochs: 2000
+min_epochs: 1
+num_encoded_tokens: 128
+cal1:
+  camera_position: front_right
+  lidar_frame: lidar_front_top/laser
+  camera_frame: camera_front_right_optical_frame
+  lidar_to_camera:
+  - - 0.6171459284370321
+    - 0.7867072998500415
+    - -0.014917351515953399
+    - -0.3888661345418775
+  - - -0.1386470647686088
+    - 0.12738667144404872
+    - 0.982114874833619
+    - -0.07959124303413297
+  - - 0.7745372130792961
+    - -0.6040399492592048
+    - 0.1876908235750864
+    - 0.32849541126351967
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  calibration_epoch: 0
+  K:
+  - 598.8242005127951
+  - 0.0
+  - 626.1250904741778
+  - 0.0
+  - 614.3585099145962
+  - 354.2595903235844
+  - 0.0
+  - 0.0
+  - 1.0
+  D:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  R:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  P:
+  - 598.8242005127951
+  - 0.0
+  - 626.1250904741778
+  - 0.0
+  - 0.0
+  - 614.3585099145962
+  - 354.2595903235844
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  width: 1280
+  height: 720
+  distortion_model: plumb_bob
+cal2:
+  camera_position: front_left
+  lidar_frame: lidar_front_top/laser
+  camera_frame: camera_front_left_optical_frame
+  lidar_to_camera:
+  - - -0.6354493532106946
+    - 0.771967084080537
+    - 0.016460273396956854
+    - 0.39265874838390685
+  - - -0.10464691331132188
+    - -0.10722256508874195
+    - 0.9887124683497233
+    - -0.08157022588961077
+  - - 0.76501839392169
+    - 0.6265541817209295
+    - 0.1489184821622024
+    - 0.2841314528051698
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+  calibration_epoch: 0
+  K:
+  - 581.848552914933
+  - 0.0
+  - 609.4912689276214
+  - 0.0
+  - 590.2217356472306
+  - 349.94981336848946
+  - 0.0
+  - 0.0
+  - 1.0
+  D:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  R:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  P:
+  - 581.848552914933
+  - 0.0
+  - 609.4912689276214
+  - 0.0
+  - 0.0
+  - 590.2217356472306
+  - 349.94981336848946
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  width: 1280
+  height: 720
+  distortion_model: plumb_bob

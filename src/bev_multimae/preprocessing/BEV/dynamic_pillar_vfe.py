@@ -28,13 +28,18 @@ class DynamicPillarizer:
         self.scale_y = grid_size[1]
 
     def forward(self, points):
+        device = points.device
+        grid_size = self.grid_size.to(device)
+        point_cloud_range = self.point_cloud_range.to(device)
+        voxel_size = self.voxel_size.to(device)
+
         points_coords = torch.floor(
-            (points[:, [1, 2]] - self.point_cloud_range[[0, 1]]) /
-            self.voxel_size[[0, 1]]
+            (points[:, [1, 2]] - point_cloud_range[[0, 1]]) /
+            voxel_size[[0, 1]]
         ).int()
 
         mask = ((points_coords >= 0) &
-                (points_coords < self.grid_size[[0, 1]])).all(dim=1)
+                (points_coords < grid_size[[0, 1]])).all(dim=1)
         points = points[mask]
         points_coords = points_coords[mask]
         points_xyz = points[:, [1, 2, 3]].contiguous()
@@ -152,7 +157,7 @@ class PointPillarScatter(nn.Module):
         for pfn in self.pfn_layers:
             features = pfn(features, pillar_inv)
 
-        batch_size = pillar_coords[:, 0].max().int().item() + 1
+        batch_size = batch_dict["batch_size"]  # pass this in explicitly
         spatial_features = torch.zeros(
             batch_size, self.out_features, self.ny, self.nx,
             dtype=features.dtype, device=features.device
@@ -161,6 +166,8 @@ class PointPillarScatter(nn.Module):
         batch_idx = pillar_coords[:, 0].long()
         y = pillar_coords[:, 1].long()
         x = pillar_coords[:, 2].long()
+
+
         spatial_features[batch_idx, :, y, x] = features
 
         batch_dict['spatial_features'] = spatial_features

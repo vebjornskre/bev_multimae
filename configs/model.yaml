@@ -1,4 +1,8 @@
 # Parameters for model spesifications
 
-dim_tokens: 128    # embedding/token dimention
+dim_tokens: 256    # embedding/token dimention
 num_vfe_features: [64]
+depth: 12
+num_heads: 16
+
+model_folder: 'model_checkpoints/'

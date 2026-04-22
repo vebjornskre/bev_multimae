@@ -34,8 +34,6 @@ class BEVPipeline:
         self.patch_size_pixels = int(self.voxel_size[0] / self.hi_res_voxel[0])
         self.radar_thresholds = build_thresholds(cfg)
 
-        self.T_cam_ego, self.T_rad_ego, self.T_rad_cam, self.T_lid_cam, self.T_lid_ego = get_all_tfs(cfg, right=True)
-
         self.num_cam_channels = cfg.cam_channels
         self.num_rad_channels = cfg.rad_channels
 
@@ -57,6 +55,8 @@ class BEVPipeline:
         ]
 
     def process(self, frame: dict) -> dict:
+        self.T_cam_ego, self.T_rad_ego, self.T_rad_cam, self.T_lid_cam, self.T_lid_ego = get_all_tfs(self.cfg, right=True)
+        
         img   = load_img(frame['cam'])
         radar = self._merge_radar(frame['rad'])
         lidar = load_lidar(frame['lid'])

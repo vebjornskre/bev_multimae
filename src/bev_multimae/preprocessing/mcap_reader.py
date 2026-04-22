@@ -68,14 +68,17 @@ def list_transforms(input_path, verbose=True):
 
     return transforms
 
-def extract(input_path):
+def extract(cfg, input_path):
     saved_camera_info = set()
+    bag_name = os.path.splitext(os.path.basename(input_path))[0]
 
     with open(input_path, "rb") as f:
         reader = make_reader(f, decoder_factories=[DecoderFactory()])
         for schema, channel, message, ros_msg in reader.iter_decoded_messages(topics=list(TOPICS.keys())):
-            output_dir = TOPICS[channel.topic]
-            os.makedirs(output_dir, exist_ok=True) 
+            sensor_dir = TOPICS[channel.topic]
+            output_dir = os.path.join(bag_name, sensor_dir)
+            output_dir = os.path.join(cfg.mcap_extract_path, output_dir)
+            os.makedirs(output_dir, exist_ok=True)
 
             timestamp = message.log_time
 
@@ -98,23 +101,17 @@ def extract(input_path):
                         distortion_model=ros_msg.distortion_model,
                     )
                     saved_camera_info.add(channel.topic)
-                    print(f"Saved camera info for {channel.topic}")
 
             elif "lidar" in channel.topic and "points" in channel.topic:
                 point_step = ros_msg.point_step
                 data = np.frombuffer(ros_msg.data, dtype=np.uint8)
-
                 n_points = len(data) // point_step
                 raw = data.reshape(n_points, point_step)
-
                 fields = {f.name: f.offset for f in ros_msg.fields}
-
                 x = raw[:, fields["x"]:fields["x"]+4].view(np.float32).squeeze()
                 y = raw[:, fields["y"]:fields["y"]+4].view(np.float32).squeeze()
                 z = raw[:, fields["z"]:fields["z"]+4].view(np.float32).squeeze()
-
                 xyz = np.stack([x, y, z], axis=1)
-
                 output_path = os.path.join(output_dir, f"{timestamp}.bin")
                 xyz.astype(np.float32).tofile(output_path)
 
@@ -132,7 +129,10 @@ def main(cfg: DictConfig) -> None:
     elif _mode == "list_transforms":
         list_transforms(input_path)
     else:
-        extract(input_path)
+        mcaps = [f for f in os.listdir(cfg.bags_path) if f.endswith('.mcap')]
+        for i, mcap in enumerate(mcaps):
+            extract(cfg, os.path.join(cfg.bags_path, mcap))
+            print(f'finished with bag {i}')
 
 
 if __name__ == "__main__":
