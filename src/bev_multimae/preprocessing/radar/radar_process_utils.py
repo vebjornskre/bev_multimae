@@ -10,8 +10,8 @@ import hydra
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig
 
-from bev_multimae.preprocessing.mcap_reader import list_transforms, apply_transform
-from bev_multimae.preprocessing.get_transforms import T_rad_to_ego
+from bev_multimae.preprocessing.mcap_reader import list_transforms
+from bev_multimae.preprocessing.get_transforms import T_rad_to_ego, apply_transform
 
 log = logging.getLogger(__name__)
 
@@ -77,8 +77,7 @@ def build_thresholds(cfg):
     }
 
 
-def radar_to_ego(cfg, radar):
-    _T_rad_to_ego = T_rad_to_ego(cfg.mcap_path)
+def radar_to_ego(cfg, radar, T_rad_ego):
 
     features = np.stack([
         radar["x"],
@@ -90,7 +89,7 @@ def radar_to_ego(cfg, radar):
     ], axis=-1)
 
     pts_xyz = features[:, :3]
-    ego_xyz = apply_transform(_T_rad_to_ego, pts_xyz)
+    ego_xyz = apply_transform(T_rad_ego, pts_xyz)
 
     ego_pts = np.concatenate([ego_xyz, features[:, 3:]], axis=1)
     

@@ -5,14 +5,12 @@ import glob
 
 from omegaconf import DictConfig
 
-from bev_multimae.preprocessing.mcap_reader import apply_transform
-from bev_multimae.preprocessing.get_transforms import T_lid_to_ego
+from bev_multimae.preprocessing.get_transforms import T_lid_to_ego, apply_transform
 
 log = logging.getLogger(__name__)
 
-def lidar_to_ego(cfg, lidar: np.ndarray) -> np.ndarray:
-    _T_lid_to_ego = T_lid_to_ego(cfg.mcap_path)
-    return apply_transform(_T_lid_to_ego, lidar)
+def lidar_to_ego(cfg, lidar: np.ndarray, T_lid_ego) -> np.ndarray:
+    return apply_transform(T_lid_ego, lidar)
 
 def load_and_process_lidar(cfg: DictConfig) -> np.ndarray:
     lidar_frame = cfg.lidar_frame

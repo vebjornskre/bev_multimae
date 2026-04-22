@@ -18,6 +18,9 @@ TOPICS = {
     "/sensing/camera/front_right/compressed_image": "data/raw/camera/front_right",
     "/sensing/camera/front_right/camera_info":      "data/raw/camera/front_right",
     "/sensing/radar/front_right/raw/points":        "data/raw/radar/front_right",
+    "/sensing/camera/front_left/compressed_image": "data/raw/camera/front_left",
+    "/sensing/camera/front_left/camera_info":      "data/raw/camera/front_left",
+    "/sensing/radar/front_left/raw/points":        "data/raw/radar/front_left",
     "/sensing/lidar/front_top/raw/points":          "data/raw/lidar/front_top",
 }
 
@@ -65,79 +68,6 @@ def list_transforms(input_path, verbose=True):
 
     return transforms
 
-def get_camera_transform(mcap_path: str, transforms=None) -> np.ndarray:
-    if transforms is None:
-        transforms = list_transforms(mcap_path, verbose=False)
-
-    chain = [
-        ("sensor_base_link",                                 "bracket_front_right"),
-        ("bracket_front_right",                              "bracket_camera_front_right"),
-        ("bracket_camera_front_right",                       "bracket_camera_front_right_sensor_mounting_point"),
-        ("bracket_camera_front_right_sensor_mounting_point", "nominal_camera_front_right"),
-        ("nominal_camera_front_right",                       "camera_front_right"),
-        ("camera_front_right",                               "camera_front_right_optical_frame"),
-    ]
-
-    return chain_transforms(transforms, chain)
-
-def get_radar_transform(mcap_path: str, transforms=None) -> np.ndarray:
-    if transforms is None:
-        transforms = list_transforms(mcap_path, verbose=False)
-
-    chain = [
-        ("sensor_base_link",          "bracket_front_right"),
-        ("bracket_front_right",       "nominal_radar_front_right"),
-        ("nominal_radar_front_right", "radar_front_right"),
-    ]
-
-    return chain_transforms(transforms, chain)
-
-def get_lidar_transform(mcap_path: str, transforms=None) -> np.ndarray:
-    if transforms is None:
-        transforms = list_transforms(mcap_path, verbose=False)
-
-    chain = [
-        ("sensor_base_link",         "nominal_lidar_front_top"),
-        ("nominal_lidar_front_top",  "lidar_front_top"),
-        ("lidar_front_top",          "lidar_front_top/laser"),
-    ]
-
-    return chain_transforms(transforms, chain)
-
-def get_radar_to_camera_transform(mcap_path: str) -> np.ndarray:
-    transforms      = list_transforms(mcap_path, verbose=False)
-    T_base_to_radar = get_radar_transform(mcap_path, transforms)
-    T_base_to_cam   = get_camera_transform(mcap_path, transforms)
-
-    return np.linalg.inv(T_base_to_cam) @ T_base_to_radar
-
-def get_lidar_to_camera_transform(mcap_path: str) -> np.ndarray:
-    transforms     = list_transforms(mcap_path, verbose=False)
-    T_base_to_lidar = get_lidar_transform(mcap_path, transforms)
-    T_base_to_cam   = get_camera_transform(mcap_path, transforms)
-
-    return np.linalg.inv(T_base_to_cam) @ T_base_to_lidar
-
-def get_transform(transforms, parent_frame, child_frame):
-    key = (parent_frame, child_frame)
-    if key not in transforms:
-        available = "\n".join(f"  {p} -> {c}" for p, c in transforms.keys())
-        raise KeyError(f"Transform {parent_frame} -> {child_frame} not found.\nAvailable:\n{available}")
-    return transforms[key]
-
-def chain_transforms(transforms, frame_chain):
-    T = np.eye(4)
-    for parent, child in frame_chain:
-        T = T @ get_transform(transforms, parent, child)
-    return T
-
-
-def apply_transform(T, points_xyz):
-    N = points_xyz.shape[0]
-    pts_h = np.hstack([points_xyz, np.ones((N, 1))])
-    return (T @ pts_h.T).T[:, :3]
-
-
 def extract(input_path):
     saved_camera_info = set()
 
@@ -145,6 +75,8 @@ def extract(input_path):
         reader = make_reader(f, decoder_factories=[DecoderFactory()])
         for schema, channel, message, ros_msg in reader.iter_decoded_messages(topics=list(TOPICS.keys())):
             output_dir = TOPICS[channel.topic]
+            os.makedirs(output_dir, exist_ok=True) 
+
             timestamp = message.log_time
 
             if "compressed_image" in channel.topic:
@@ -169,9 +101,20 @@ def extract(input_path):
                     print(f"Saved camera info for {channel.topic}")
 
             elif "lidar" in channel.topic and "points" in channel.topic:
-                n_points = ros_msg.width * ros_msg.height
-                raw = np.frombuffer(ros_msg.data, dtype=np.uint8).reshape(n_points, 48)
-                xyz = raw[:, :12].view(np.float32).reshape(n_points, 3)
+                point_step = ros_msg.point_step
+                data = np.frombuffer(ros_msg.data, dtype=np.uint8)
+
+                n_points = len(data) // point_step
+                raw = data.reshape(n_points, point_step)
+
+                fields = {f.name: f.offset for f in ros_msg.fields}
+
+                x = raw[:, fields["x"]:fields["x"]+4].view(np.float32).squeeze()
+                y = raw[:, fields["y"]:fields["y"]+4].view(np.float32).squeeze()
+                z = raw[:, fields["z"]:fields["z"]+4].view(np.float32).squeeze()
+
+                xyz = np.stack([x, y, z], axis=1)
+
                 output_path = os.path.join(output_dir, f"{timestamp}.bin")
                 xyz.astype(np.float32).tofile(output_path)
 
@@ -181,7 +124,7 @@ def extract(input_path):
                     pcd_file.write(ros_msg.data)
 
 
-@hydra.main(config_path="../../../configs", config_name="data_config", version_base=None)
+@hydra.main(config_path="../../../configs", config_name="data", version_base=None)
 def main(cfg: DictConfig) -> None:
     input_path = cfg.mcap_path
     if _mode == "list_topics":

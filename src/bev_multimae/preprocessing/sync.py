@@ -44,6 +44,8 @@ def load_radar(path: str = None) -> dict:
 def load_lidar(path: str = None) -> dict:
     pts = np.frombuffer(open(path, 'rb').read(), dtype=np.float32).reshape(-1, 3)
     xyz = pts[:, :3]
+    
+    
     valid = (
         (xyz[:, 0] > 3.0) &   # further in front
         (xyz[:, 2] > -0.5) &  # not below ground

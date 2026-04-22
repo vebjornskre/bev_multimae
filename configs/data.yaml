@@ -6,9 +6,13 @@ radar_raw_path: "data/raw/radar/front_right/"
 imgs_raw_path: "data/raw/camera/front_right/"
 lidar_raw_path: "data/raw/lidar/front_top"
 
+transforms_path: "data/transforms"
+
 camera_info: "data/raw/camera/front_right/camera_info.npz"
 processed_data_dir: "data/processed"
-mcap_path: "data/raw/agriRobotData.mcap"
+# mcap_path: "data/raw/agriRobotData.mcap"
+mcap_path: "data/raw/bags/evt_0e8RBfDxhnHKvZ7a.mcap"
+bags_path: "data/raw/bags"
 
 # Models
 depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
@@ -23,15 +27,16 @@ radar_frame: 420
 lidar_frame: 140
 
 # BEV
-# Original
-voxel_size: [2.5, 2.5, 25]
-point_cloud_range: [0, -10, -5, 40, 30, 20]
-# Original end
+
+# # Original
+# voxel_size: [2.5, 2.5, 25]
+# point_cloud_range: [0, -10, -5, 40, 30, 20]
+# # Original end
 
 
 # # Zoomed in (no treeline)
-# voxel_size: [1.5, 1.5, 25]
-# point_cloud_range: [3, -6, -5, 27, 21, 20]
+voxel_size: [1.5, 1.5, 25]
+point_cloud_range: [1.5, -6, -5, 28.5, 21, 20]
 
 
 hi_res_voxel: [0.1, 0.1, 25]
@@ -41,20 +46,28 @@ rad_channels: 9
 # Point cloud specific 
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
-rcs_m2_filter: 0.13          # m^2
-snr_min: 15                  # dB
-min_dist: 0                  # m
+#### ORIGINAL ####
+# rcs_m2_filter: 0.13          # m^2
+# snr_min: 15                  # dB
+##################
+#### TESTING ####
+rcs_m2_filter: 0.00          # m^2
+snr_min: 10                  # dB
+################# 
+min_dist: 5                  # m
 max_dist: 120                # m
 elevation_angle: -0.2        # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"
+plotting: True
+meshlab_cam: False
 
 # Depth calibration
 calibration: 'lidar' # can also be radar or lidar
 ransac_residual_threshold: 1.5
 fit_beta: True
-interp_depth_residuals: False # if depth completion is False, then scale (alpha, beta) will be fitted with ransac
+interp_depth_residuals: True # if depth completion is False, then scale (alpha, beta) will be fitted with ransac
 
 # Number of radar scans to be used
 num_radar_frames: 6 # 3 scans per image 

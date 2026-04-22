@@ -7,17 +7,36 @@ import cv2
 
 from bev_multimae.preprocessing.get_transforms import apply_transform, T_cam_to_ego
 
+
+def _normalize_patch_size(patch_size_pixels):
+    if isinstance(patch_size_pixels, (tuple, list)):
+        patch_h_px, patch_w_px = patch_size_pixels
+    else:
+        patch_h_px = patch_w_px = patch_size_pixels
+    return patch_h_px, patch_w_px
+
 def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, point_cloud_range, patch_size_pixels, i):
     save_folder = os.path.join(cfg.plot_folder, "BEV")
     os.makedirs(save_folder, exist_ok=True)
 
     bev_hi_np = bev_cam_hires.permute(1, 2, 0).numpy()
 
+    print(f'bev cam hires shape: {bev_cam_hires.shape}')
+    print(f'bev cam hires numpy shape: {bev_hi_np.shape}')
+
     pcr = point_cloud_range
     x_min, y_min, x_max, y_max = pcr[0], pcr[1], pcr[3], pcr[4]
     x_range = x_max - x_min
     y_range = y_max - y_min
     extent = [0, x_range, 0, y_range]
+
+    # Compute patch size in metric space
+    bev_h_px, bev_w_px = bev_hi_np.shape[:2]
+    px_per_m_x = bev_w_px / x_range
+    px_per_m_y = bev_h_px / y_range
+    patch_h_px, patch_w_px = _normalize_patch_size(patch_size_pixels)
+    patch_step_x_m = patch_w_px / px_per_m_x
+    patch_step_y_m = patch_h_px / px_per_m_y
 
     def apply_ticks(ax):
         x_metric = np.arange(x_min, x_max + 1, 10)
@@ -29,12 +48,12 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
         ax.set_xlabel("x / forward (m)")
         ax.set_ylabel("y / lateral (m)")
 
-    def draw_lines(ax, step_m, color, lw=0.8):
-        v_lines = [[(x, 0), (x, y_range)] for x in np.arange(0, x_range + step_m, step_m)]
-        h_lines = [[(0, y), (x_range, y)] for y in np.arange(0, y_range + step_m, step_m)]
+    def draw_patch_grid(ax, step_x_m, step_y_m, color, lw=0.8):
+        v_lines = [[(x, 0), (x, y_range)] for x in np.arange(0, x_range + step_x_m, step_x_m)]
+        h_lines = [[(0, y), (x_range, y)] for y in np.arange(0, y_range + step_y_m, step_y_m)]
         ax.add_collection(LineCollection(v_lines + h_lines, colors=color, linewidths=lw, alpha=0.8, zorder=2))
 
-    height = pts_radar_ego[:, 1]
+    height = pts_radar_ego[:, 2]
     valid = height > -3
     pts_radar_ego = pts_radar_ego[valid]
 
@@ -45,7 +64,7 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
 
     ax = axes[0]
     ax.imshow(bev_hi_np, origin="lower", aspect="auto", extent=extent)
-    draw_lines(ax, step_m=voxel_size[0], color="red")
+    draw_patch_grid(ax, patch_step_x_m, patch_step_y_m, color="red")
 
     ax.scatter(
         px_rad, py_rad,
@@ -78,36 +97,28 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
     plt.close(fig_overlay)
 
 
-def overlay_radar_on_image(cfg, img, pts_rad_ego):
+def overlay_radar_on_image(cfg, img, pts_rad_ego, T_cam_ego):
     cam_info = np.load(cfg.camera_info)
     K, D = cam_info['K'], cam_info['D']
     img_np = np.array(img)
     img_hw = img_np.shape[:2]
-    new_K, _ = cv2.getOptimalNewCameraMatrix(K, D, (img_hw[1], img_hw[0]), 0) # new
 
-    img_np = np.array(img)
-    img_np = cv2.undistort(img_np, K, D)
-    H, W = img_np.shape[:2]
-
-    _T_ego_to_cam = np.linalg.inv(T_cam_to_ego(cfg.mcap_path))
+    T_ego_cam = np.linalg.inv(T_cam_ego)
     pts_xyz = pts_rad_ego[:, :3]
-    pts_rad_camFrame = apply_transform(_T_ego_to_cam, pts_xyz)  
+    pts_rad_camFrame = apply_transform(T_ego_cam, pts_xyz)  
 
     valid = pts_rad_camFrame[:, 2] > 0
     pts_rad_camFrame = pts_rad_camFrame[valid]
     depths = pts_rad_camFrame[:, 2]
     
- 
     uv, _ = cv2.projectPoints(
         pts_rad_camFrame.astype(np.float64),
         np.zeros(3), np.zeros(3),
-        new_K.astype(np.float64), None
+        K.astype(np.float64), D
     )
 
-    
     uv = uv.reshape(-1, 2)
     
-    # img_np = np.array(img).copy()
     H, W = img_np.shape[:2]
     inside = (uv[:,0] >= 0) & (uv[:,0] < W) & (uv[:,1] >= 0) & (uv[:,1] < H)
     uv = uv[inside].astype(int)
@@ -152,6 +163,7 @@ def plot_bev_target(cfg, bev, name="bev_target"):
 
     bev = bev[0].detach().cpu().numpy()
     C = bev.shape[0]
+    print(f'radar bev shape: {bev.shape}')
 
     titles = [
         "Occupancy",

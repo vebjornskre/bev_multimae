@@ -1,0 +1,56 @@
+radar_raw_path: data/raw/radar/front_right/
+imgs_raw_path: data/raw/camera/front_right/
+lidar_raw_path: data/raw/lidar/front_top
+camera_info: data/raw/camera/front_right/camera_info.npz
+processed_data_dir: data/processed
+mcap_path: data/raw/agriRobotData.mcap
+depth_pro_weights: /work3/s242723/.cache/depth-pro/depth_pro.pt
+depth_model: moge
+img_frame: 140
+radar_frame: 420
+lidar_frame: 140
+voxel_size:
+- 1.5
+- 1.5
+- 25
+point_cloud_range:
+- 3
+- -6
+- -5
+- 27
+- 21
+- 20
+hi_res_voxel:
+- 0.1
+- 0.1
+- 25
+cam_channels: 3
+rad_channels: 9
+lb_percent:
+- 0
+- 5
+- 0
+ub_percent:
+- 90
+- 95
+- 90
+rcs_m2_filter: 0.13
+snr_min: 15
+min_dist: 0
+max_dist: 120
+elevation_angle: -0.2
+plot_folder: reports/figures/
+calibration: lidar
+ransac_residual_threshold: 1.5
+fit_beta: true
+interp_depth_residuals: false
+num_radar_frames: 6
+dim_tokens: 128
+depth: 12
+num_heads: 8
+num_vfe_features:
+- 64
+batch_size: 1
+max_epochs: 100
+min_epochs: 1
+lr: 4.0e-05
