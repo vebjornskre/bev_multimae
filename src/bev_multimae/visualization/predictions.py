@@ -29,10 +29,10 @@ def viz_preds(preds, batch, folder):
 
             axes[0].set_xlabel("Forward (m)")
             axes[0].set_ylabel("Left (m)")
-            axes[0].imshow(inp[..., 0], cmap='gray', origin='lower')
-            axes[0].set_title("Input (occupancy)")
-            axes[1].imshow(pred[..., 0], cmap='gray', origin='lower')
-            axes[1].set_title("Prediction (occupancy)")
+            axes[0].imshow(inp[..., 1], cmap='gray', origin='lower')
+            axes[0].set_title("Input (log density)")
+            axes[1].imshow(pred[..., 1], cmap='gray', origin='lower')
+            axes[1].set_title("Prediction (log density)")
 
         else:  # cam_bev
             pred = v[0].detach().cpu().permute(1, 2, 0).numpy()

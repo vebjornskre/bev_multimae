@@ -1,53 +1,56 @@
-from pytorch_lightning import Trainer
 import os
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import logging
-from functools import partial
-from einops import rearrange
 
-# Hydra
+from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
-# local
 from bev_multimae.multimae.adapters.rad_adapt import RadarAdapter
 from bev_multimae.multimae.adapters.cam_adapt import CameraAdapter
 from bev_multimae.multimae.decoders.recon_decoder import SpatialOutputAdapter
-
 from bev_multimae.multimae.model import Bev_MultiMAE
 from bev_multimae.multimae.model_lightning import BevMultiMAELightning
 from bev_multimae.datasets.data import BEVDataset, collate_radar
-
 from bev_multimae.visualization.predictions import viz_preds
+from bev_multimae.multimae.train_utils import *
 
-def denorm_patches(pred, target, patch_size):
-    """Denormalize patch-normalized predictions using target patch stats."""
-    p = patch_size
-    H, W = target.shape[-2:]
-    nh, nw = H // p, W // p
-
-    # patchify target to get per-patch stats
-    t = rearrange(target, "b c (nh p1) (nw p2) -> b (nh nw) (p1 p2 c)", nh=nh, nw=nw, p1=p, p2=p)
-    mean = t.mean(dim=-1, keepdim=True)
-    var  = t.var(dim=-1, keepdim=True)
-
-    # patchify pred, denorm, unpatchify
-    p_pred = rearrange(pred, "b c (nh p1) (nw p2) -> b (nh nw) (p1 p2 c)", nh=nh, nw=nw, p1=p, p2=p)
-    p_pred = p_pred * torch.sqrt(var + 1e-6) + mean
-
-    return rearrange(p_pred, "b (nh nw) (p1 p2 c) -> b c (nh p1) (nw p2)", nh=nh, nw=nw, p1=p, p2=p, c=target.shape[1])
+log = logging.getLogger(__name__)
 
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
     # Load and create dataset
     data_path = cfg.processed_data_dir
-    train_dataset = BEVDataset(data_path, cfg)
+
+    # DATASET INITIALIZATION
+    img_mean, img_std = compute_img_stats(data_path) 
+    rad_mean, rad_std = compute_radar_stats(data_path)
+
+    # I don't have val and test yet
+    # val_ds  = BEVDataset(data_path, split="val",  img_mean=img_mean, img_std=img_std)
+    # test_ds = BEVDataset(data_path, split="test", img_mean=img_mean, img_std=img_std)
+
+    # Re-init train with same stats
+    train_ds = BEVDataset(
+        data_path, split="train", 
+        img_mean=img_mean, img_std=img_std,
+        rad_mean=rad_mean, rad_std=rad_std
+        )
+    
+    val_ds = BEVDataset(
+        data_path, split="val", 
+        img_mean=img_mean, img_std=img_std,
+        rad_mean=rad_mean, rad_std=rad_std
+        )
+
+    log.info(f'Number of samples: {len(train_ds)}')
 
     # Unpack meta data from the training data to be used in the adapters
-    meta = train_dataset.meta
+    meta = train_ds.meta
 
 
     grid_size = meta['grid_size']
@@ -102,59 +105,113 @@ def main(cfg: DictConfig):
         dim_tokens_enc=dim_tokens
     )
 
-    
     output_adapters = {
         'cam_bev': cam_decode,
         'radar': rad_decode, 
     }
 
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=cfg.model_folder,
+        filename="best_model_{epoch:02d}_{val_loss:.4f}",
+        monitor="val_loss",
+        mode="min",
+        save_top_k=cfg.save_top_k,
+        save_last=True,
+    )
+    
+    # WandB logging
+    if cfg.wandb_project:
+        wandb_logger = WandbLogger(
+            project=cfg.wandb_project,
+            entity=cfg.wandb_entity,
+            log_model=False,
+            config=OmegaConf.to_container(cfg, resolve=True)  
+        )
+        hyperparams = {
+            "learning_rate":cfg.lr, 
+            "batch_size":cfg.batch_size,
+            "num_epochs":cfg.max_epochs,
+            "optimizer":cfg.optimizer
+            }
+        wandb_logger.log_hyperparams(hyperparams)
+    else:
+        wandb_logger = None  # Or use pl.loggers.CSVLogger(save_dir)
+
     # training parameters (num_vfe_features is also a training parameter)
-    batch_size = cfg.batch_size 
-    depth = cfg.depth
-    num_heads = cfg.num_heads
-    lr = cfg.lr
 
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size, 
-        num_workers=6,
+        train_ds, 
+        cfg.batch_size, 
+        num_workers=cfg.num_workers,
         pin_memory=True,
         persistent_workers=True,
-        collate_fn=collate_radar)
+        collate_fn=collate_radar,
+        shuffle=True
+        )
+
+    val_loader = DataLoader(
+        val_ds, 
+        cfg.batch_size, 
+        num_workers=cfg.num_workers,
+        pin_memory=True,
+        persistent_workers=True,
+        collate_fn=collate_radar,
+        shuffle=False
+        )
 
     model = Bev_MultiMAE(
         input_adapters=input_adapters,
         output_adapters=output_adapters,
         dim_tokens=dim_tokens,
-        depth=depth,
-        num_heads=num_heads
+        depth=cfg.depth,
+        num_heads=cfg.num_heads
     )
 
-    model_lightning = BevMultiMAELightning(model, lr=lr, num_encoded_tokens=cfg.num_encoded_tokens)
+    model_lightning = BevMultiMAELightning(
+        model=model,
+        lr=cfg.lr,
+        weight_decay=cfg.weight_decay,
+        num_encoded_tokens=cfg.num_encoded_tokens,
+        norm_pix=cfg.norm_pix,
+        depth=cfg.depth,
+        num_heads=cfg.num_heads,
+        dim_tokens=cfg.dim_tokens,
+        warmup_steps=cfg.warmup_steps
+    )
+
     trainer = Trainer(
         max_epochs = cfg.max_epochs,
         min_epochs = cfg.min_epochs,
-        enable_checkpointing=False
+        enable_checkpointing=True,
+        logger=wandb_logger,
+        callbacks=[checkpoint_callback],
+        default_root_dir=cfg.model_folder,
+        log_every_n_steps=cfg.log_every_n_steps,
+        gradient_clip_val=1.0
     )
 
-    ckpt_path = os.path.join(cfg.model_folder, "bev_multimae.ckpt")
-    continue_training = True
+    ckpt_path = os.path.join(cfg.model_folder, "best_model_epoch=37_val_loss=0.0000.ckpt")
+    continue_training = cfg.continue_training
 
     os.makedirs(cfg.model_folder, exist_ok=True)
-    trainer = Trainer(
-        max_epochs=cfg.max_epochs,
-        min_epochs=cfg.min_epochs,
-        enable_checkpointing=False
-    )
 
     if continue_training and os.path.exists(ckpt_path):
-        model_lightning = BevMultiMAELightning.load_from_checkpoint(
-            ckpt_path, model=model, lr=lr, num_encoded_tokens=cfg.num_encoded_tokens
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        hp = ckpt["hyper_parameters"]
+
+        model = Bev_MultiMAE(
+            input_adapters=input_adapters,
+            output_adapters=output_adapters,
+            dim_tokens=hp["dim_tokens"],
+            depth=hp["depth"],
+            num_heads=hp["num_heads"],
         )
-        print(f"Loaded checkpoint from {ckpt_path}")
-        trainer.fit(model_lightning, train_loader)
-    else:
-        trainer.fit(model_lightning, train_loader)
+
+        model_lightning = BevMultiMAELightning.load_from_checkpoint(
+            ckpt_path, model=model
+        )
+
+    trainer.fit(model_lightning, train_loader, val_loader)
 
     trainer.save_checkpoint(ckpt_path)
     print(f"Saved checkpoint to {ckpt_path}")
@@ -198,8 +255,23 @@ def main(cfg: DictConfig):
         else:
             composite = preds["cam_bev"] * cam_mask + batch["cam_bev"] * (1 - cam_mask)
 
-        cam_pred = denorm_patches(preds["cam_bev"], batch["cam_bev"], patch_size=15)
-        composite = cam_pred * cam_mask + batch["cam_bev"] * (1 - cam_mask)
+        # cam_pred = denorm_patches(preds["cam_bev"], batch["cam_bev"], patch_size=15)
+
+        img_mean = train_ds.img_mean.cuda()
+        img_std  = train_ds.img_std.cuda()
+
+        cam_pred = preds["cam_bev"]
+
+        if cfg.norm_pix:
+            cam_pred = denorm_patches(cam_pred, batch["cam_bev"], patch_size[0])
+
+        cam_pred  = denorm_img(cam_pred, img_mean, img_std)
+        cam_input = denorm_img(batch["cam_bev"], img_mean, img_std)
+
+        if cam_mask.sum() == 0:
+            composite = cam_pred
+        else:
+            composite = cam_pred * cam_mask + cam_input * (1 - cam_mask)
 
         viz_preds(
             {"cam_bev": composite, "radar": preds["radar"]},

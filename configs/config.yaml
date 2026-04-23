@@ -3,3 +3,4 @@ defaults:
   - model
   - train
   - cal
+  - wandb

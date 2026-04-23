@@ -1,7 +1,17 @@
 # Traning specific parameters
 
 batch_size: 128
-lr: 1e-5
-max_epochs: 10
+num_workers: 4
+lr: 2e-4
+max_epochs: 100
 min_epochs: 1
 num_encoded_tokens: 156
+weight_decay: 0.01
+continue_training: False
+warmup_steps: 2000
+
+norm_pix: True
+
+log_every_n_steps: 10
+save_top_k: 1
+optimizer: 'adamw'

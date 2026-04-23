@@ -55,7 +55,7 @@ ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z
 ##################
 #### TESTING ####
 rcs_m2_filter: 0.00          # m^2
-snr_min: 10                  # dB
+snr_min: 2                  # dB
 ################# 
 min_dist: 5                  # m
 max_dist: 120                # m

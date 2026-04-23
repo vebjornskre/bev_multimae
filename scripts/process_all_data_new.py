@@ -39,6 +39,10 @@ def main(cfg: DictConfig):
         log.info(f'Processing event {event_idx}/{n_events}')
 
         save_dir = os.path.join(cfg.processed_data_dir, "train", event)
+        if os.path.exists(save_dir):
+            log.info(f'Skipping {event} — already processed')
+            continue
+
         os.makedirs(save_dir, exist_ok=True)
 
         OmegaConf.update(cfg, "camera_info", f"data/raw/mcap_extract/{event}/camera/front_{direction}/camera_info.npz")
@@ -52,6 +56,11 @@ def main(cfg: DictConfig):
         lidar_path = os.path.join(cfg.mcap_extract_path, event, "lidar", "front_top")
         if not os.path.exists(lidar_path) or not os.listdir(lidar_path):
             log.warning(f'Skipping {event} — empty or missing lidar folder')
+            continue
+
+        radar_path = os.path.join(cfg.mcap_extract_path, event, "radar", f"front_{direction}")
+        if not os.path.exists(radar_path) or not os.listdir(radar_path):
+            log.warning(f'Skipping {event} — empty or missing radar folder')
             continue
 
         frames = sync_frames(cfg)

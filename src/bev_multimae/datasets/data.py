@@ -45,29 +45,56 @@ def collate_radar(samples):
     }
 
 class BEVDataset(Dataset):
-    def __init__(self, data_path, cfg):
-        self.meta = torch.load(os.path.join(cfg.processed_data_dir, 'meta.pt'), weights_only=False)
+    def __init__(self, data_path, split="train", img_mean=None, img_std=None, rad_mean=None, rad_std=None):
+        assert split in ['train', 'val', 'test']
+        self.meta = torch.load(os.path.join(data_path, 'meta.pt'), weights_only=False)
         skip = {"meta.pt", "radar_stats.pt"}
+
+        skip_events = {
+            "evt_0dpi1jtdkfL4ReZx", "evt_0e3qdKh444ogAO7k",
+            "evt_0e3qWOZPmBcxw6le", "evt_0e3qWOZPmBcxw6le",
+            "evt_0e3qYFzAbTyiJEC0", "evt_0e3qZ3gUUyKSySmG",
+            "evt_0e8RBM8c9lbnJIcY", "evt_0e8RGcuJoVLx95HV",
+            "evt_0e8RGh9h8HVd0mMN", "evt_0e8RHpfQW2EAsyh5",
+            "evt_0e8RKuQ17gJsASht", "evt_0e8RPpu7MFbAyMMZ",
+            "evt_0e8RPtAGjsFkH7iI", "evt_0e8RSXbBo3Nf3CKl",
+            "evt_0e8RPwdTi1LVwWTv", "evt_0e8RQ2Rhx24bzKAg",
+            "evt_0e8RQLQbupv7ze9a", "evt_0e8RQQaclY2VF8AH",
+            "evt_0e3qWOZPmBcxw6le"
+            
+            }  # folders to skip
+
         self.files = sorted(
-            [p for p in Path(data_path).rglob("*.pt") if p.name not in skip],
+            [
+                p for p in Path(os.path.join(data_path, split)).rglob("*.pt")
+                if p.name not in skip
+                and not any(parent.name in skip_events for parent in p.parents)
+            ],
             key=lambda p: int(p.stem.split("_")[-1])
         )
-        self.mean = self.meta["radar_mean"]
-        self.std = self.meta["radar_std"]
-        self.imagenet_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-        self.imagenet_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+
+        # Overfitted model uses the image below:
+        # self.files = [os.path.join(data_path,'train','001650.pt')]
+
+        self.img_mean = img_mean.view(3,1,1) if img_mean is not None else None
+        self.img_std  = img_std.view(3,1,1) if img_std is not None else None
+
+        self.rad_mean = (rad_mean.view(3) if rad_mean is not None else None)
+        self.rad_std  = (rad_std.view(3) if rad_std  is not None else None)
         
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
         data = torch.load(self.files[idx], weights_only=False)
-        data["radar"]["points"][:, 4:7] = (data["radar"]["points"][:, 4:7] - self.mean) / (self.std + 1e-6)
 
-        data = torch.load(self.files[idx], weights_only=False)
+        if self.img_mean is not None and self.img_std is not None:
+            data["radar"]["points"][:, 4:7] = (data["radar"]["points"][:, 4:7] - self.rad_mean) / (self.rad_std + 1e-6)
 
-        cam = data["cam_bev"].float() 
-        
+        cam = data["cam_bev"].float()
+        if self.img_mean is not None and self.img_std is not None:
+            cam = (cam - self.img_mean) / (self.img_std + 1e-6)
+
         return {
             "cam_bev": cam,
             "radar": data["radar"],
