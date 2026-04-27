@@ -14,7 +14,6 @@ def T_cam_to_ego(mcap_path: str, transforms=None) -> np.ndarray:
     if transforms is None:
         transforms = list_transforms(mcap_path, verbose=False)
 
-
     chain = [
         ("sensor_base_link",                                 "bracket_front_right"),
         ("bracket_front_right",                              "bracket_camera_front_right"),
@@ -27,28 +26,46 @@ def T_cam_to_ego(mcap_path: str, transforms=None) -> np.ndarray:
     return chain_transforms(transforms, chain)
 
 def T_rad_to_ego(mcap_path: str, transforms=None) -> np.ndarray:
-    if transforms is None:
-        transforms = list_transforms(mcap_path, verbose=False)
+    # if transforms is None:
+    #     transforms = list_transforms(mcap_path, verbose=False)
 
-    chain = [
-        ("sensor_base_link",          "bracket_front_right"),
-        ("bracket_front_right",       "nominal_radar_front_right"),
-        ("nominal_radar_front_right", "radar_front_right"),
-    ]
-    return chain_transforms(transforms, chain)
+    # chain = [
+    #     ("sensor_base_link",          "bracket_front_right"),
+    #     ("bracket_front_right",       "nominal_radar_front_right"),
+    #     ("nominal_radar_front_right", "radar_front_right"),
+    # ]
+    # return chain_transforms(transforms, chain)
 
+    T_rad_to_cam = np.linalg.inv(np.array([
+        [-0.030, -0.162, 0.986, -0.078],
+        [ 0.999,  0.003, 0.031,  0.002],
+        [-0.009,  0.987, 0.162,  0.108],
+        [ 0.000,  0.000,  0.000,  1.000]
+    ]))
+    T_cam_to_bev_ego = T_cam_to_ego(mcap_path)
+    return T_cam_to_bev_ego @ T_rad_to_cam
 
 def T_lid_to_ego(mcap_path: str, transforms=None) -> np.ndarray:
-    if transforms is None:
-        transforms = list_transforms(mcap_path, verbose=False)
+    # if transforms is None:
+    #     transforms = list_transforms(mcap_path, verbose=False)
 
-    chain = [
-        ("sensor_base_link",         "nominal_lidar_front_top"),
-        ("nominal_lidar_front_top",  "lidar_front_top"),
-        ("lidar_front_top",          "lidar_front_top/laser"),
-    ]
+    # chain = [
+    #     ("sensor_base_link",         "nominal_lidar_front_top"),
+    #     ("nominal_lidar_front_top",  "lidar_front_top"),
+    #     ("lidar_front_top",          "lidar_front_top/laser"),
+    # ]
 
-    return chain_transforms(transforms, chain)
+    # return chain_transforms(transforms, chain)
+    
+    T_lid_to_cam = np.linalg.inv(np.array([
+        [0.396, -0.266,  0.879, -0.056],
+        [0.917,  0.072, -0.391,  0.504],
+        [0.041,  0.961,  0.273,  0.282],
+        [0.000,  0.000,  0.000,  1.000]
+    ]))
+    
+    T_cam_to_bev_ego = T_cam_to_ego(mcap_path)
+    return T_cam_to_bev_ego @ T_lid_to_cam
 
 def T_rad_to_cam(mcap_path: str) -> np.ndarray:
     transforms    = list_transforms(mcap_path, verbose=False)

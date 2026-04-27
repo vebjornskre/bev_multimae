@@ -13,7 +13,7 @@ from bev_multimae.preprocessing.camera.lift import lift
 from bev_multimae.preprocessing.BEV.splat import hard_splat, patchify
 from bev_multimae.preprocessing.BEV.dynamic_pillar_vfe import DynamicPillarizer, PointPillarScatter, build_bev_target
 from bev_multimae.preprocessing.sync import load_img, load_lidar, load_radar
-from bev_multimae.preprocessing.new_get_transforms import get_all_tfs
+from bev_multimae.preprocessing.get_transforms import get_all_tfs
 from bev_multimae.preprocessing.lidar.lidar_process_utils import lidar_to_ego
 from bev_multimae.visualization.BEV_visualization import plot_bev_target
 

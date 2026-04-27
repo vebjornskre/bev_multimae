@@ -41,6 +41,12 @@ def viz_preds(preds, batch, folder, radar_channel=None):
                 "SNR (mean)",
             ]
 
+            if len(channels) > 9:
+                rad_titles.extend([
+                    "Mean x from pillar center",
+                    "Mean y from pillar center"
+                ])
+
             for title, ch in zip(rad_titles, channels):
                 pred_ch = pred[..., ch]
                 inp_ch  = inp[..., ch]

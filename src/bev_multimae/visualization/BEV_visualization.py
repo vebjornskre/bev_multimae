@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 import cv2
 
-from bev_multimae.preprocessing.get_transforms import apply_transform, T_cam_to_ego
+from bev_multimae.preprocessing.get_transforms import apply_transform
 
 
 def _normalize_patch_size(patch_size_pixels):

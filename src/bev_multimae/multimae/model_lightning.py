@@ -6,7 +6,7 @@ from bev_multimae.multimae.criterion import MaskedMSELoss, MaskedL1Loss
 class BevMultiMAELightning(pl.LightningModule):
     def __init__(self, model, lr=1e-4, weight_decay=0.01, num_encoded_tokens=288, 
              norm_pix=False, depth=6, num_heads=8, dim_tokens=256, warmup_steps=500, 
-             drop_path_rate=0.0, drop_rate=0.0, attn_drop_rate=0.0, data_aug=False):
+             drop_path_rate=0.0, drop_rate=0.0, attn_drop_rate=0.0, data_aug=False, num_rad_channels=11):
         super().__init__()
         self.model = model
         self.lr = lr

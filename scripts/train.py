@@ -138,7 +138,7 @@ def main(cfg: DictConfig):
     # print("decoder h_posemb, w_posemb:", H_cam // patch_size[0], W_cam // patch_size[1])
 
     cam_decode = SpatialOutputAdapter(
-        num_channels=meta['num_cam_channels'],
+        num_channels=cfg.cam_channels,
         stride_level=1,
         patch_size_full=patch_size,
         image_size=(grid_size_hires[1], grid_size_hires[0]),
@@ -155,7 +155,7 @@ def main(cfg: DictConfig):
     # print("out_proj:", cam_decode.out_proj.weight.shape)
 
     rad_decode = SpatialOutputAdapter(
-        num_channels=meta['num_rad_channels'],
+        num_channels=cfg.rad_channels,
         stride_level=1,
         patch_size_full=(1, 1),  # each token is already one grid cell
         image_size=(grid_size[1], grid_size[0]),
@@ -194,7 +194,7 @@ def main(cfg: DictConfig):
             }
         wandb_logger.log_hyperparams(hyperparams)
     else:
-        wandb_logger = None  # Or use pl.loggers.CSVLogger(save_dir)
+        wandb_logger = None 
 
     # training parameters (num_vfe_features is also a training parameter)
 
@@ -219,7 +219,6 @@ def main(cfg: DictConfig):
         shuffle=False
         )
 
-    
 
     model = Bev_MultiMAE(
         input_adapters=input_adapters,
@@ -245,7 +244,8 @@ def main(cfg: DictConfig):
         drop_path_rate = cfg.drop_path_rate,
         drop_rate = cfg.drop_rate,
         attn_drop_rate = cfg.attn_drop_rate,
-        data_aug=cfg.augment
+        data_aug=cfg.augment,
+        num_rad_channels=cfg.rad_channels
     )
 
     trainer = Trainer(
@@ -271,19 +271,24 @@ def main(cfg: DictConfig):
         ckpt = torch.load(ckpt_path, map_location="cpu")
         hp = ckpt["hyper_parameters"]
 
+        try:
+            num_rad_channels = hp['num_rad_channels']
+        except:
+            num_rad_channels = 9
+    
         input_adapters = {
             "radar": RadarAdapter(hp['dim_tokens'], grid_size, meta['num_point_features'], cfg.num_vfe_features),
             "cam_bev": CameraAdapter(hp['dim_tokens'], cfg.cam_channels, patch_size, grid_size_hires),
         }
         output_adapters = {
             "cam_bev": SpatialOutputAdapter(
-                num_channels=meta['num_cam_channels'], stride_level=1,
+                num_channels=cfg.cam_channels, stride_level=1,
                 patch_size_full=patch_size, image_size=(grid_size_hires[1], grid_size_hires[0]),
                 task="cam_bev", context_tasks=["cam_bev", "radar"],
                 dim_tokens=hp['dim_tokens'], dim_tokens_enc=hp['dim_tokens'],
             ),
             "radar": SpatialOutputAdapter(
-                num_channels=meta['num_rad_channels'], stride_level=1,
+                num_channels=num_rad_channels, stride_level=1,
                 patch_size_full=(1, 1), image_size=(grid_size[1], grid_size[0]),
                 task="radar", context_tasks=["cam_bev", "radar"],
                 dim_tokens_enc=hp['dim_tokens'],

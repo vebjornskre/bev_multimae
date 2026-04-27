@@ -238,6 +238,16 @@ def build_bev_target(batch_dict, grid_size, num_rad_channels):
 
     bev[b, 8, y, x] = s_mean
 
+    f_center = batch_dict['f_center']  # (N, 3) — x, y, z offsets from voxel center
+
+    # Mean x/y offset from pillar center
+    fc_sum = torch.zeros(n, 2, device=f_center.device)
+    fc_sum.index_add_(0, inv, f_center[:, :2])
+    fc_mean = fc_sum / cnt.unsqueeze(1)  # (num_pillars, 2)
+
+    bev[b, 9,  y, x] = fc_mean[:, 0]   # mean x offset from pillar center
+    bev[b, 10, y, x] = fc_mean[:, 1]   # mean y offset from pillar center
+
     return bev
 
 

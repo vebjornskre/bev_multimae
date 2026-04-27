@@ -56,7 +56,7 @@ class BEVDataset(Dataset):
         img_mean=None, img_std=None, rad_mean=None, 
         rad_std=None, augment=False,
         v_flip_rate=0.0, h_flip_rate=0.0, rot_rate=0.0, rot_angle=(-20, 20),
-        point_cloud_range=None
+        point_cloud_range=None, num_rad_channels=11
         ):
         assert split in ['train', 'val', 'test']
         self.meta = torch.load(os.path.join(data_path, 'meta.pt'), weights_only=False)
@@ -91,6 +91,9 @@ class BEVDataset(Dataset):
         self.rad_mean = (rad_mean.view(3) if rad_mean is not None else None)
         self.rad_std  = (rad_std.view(3) if rad_std  is not None else None)
 
+        self.grid_size = self.meta['grid_size']
+        self.num_rad_channels = num_rad_channels
+
         self.augment = augment
         if self.augment:
             self.pillarizer = DynamicPillarizer(
@@ -102,9 +105,8 @@ class BEVDataset(Dataset):
             self.h_flip_rate = h_flip_rate
             self.v_flip_rate = v_flip_rate
             self.rot_angle = rot_angle
-            self.num_rad_channels = self.meta['num_rad_channels']
-            self.grid_size = self.meta['grid_size']
-
+            self.num_rad_channels = num_rad_channels
+        
 
     def augment_sample(self, cam, rad_points):
         pcr = self.pillarizer.point_cloud_range  # [x_min, y_min, z_min, x_max, y_max, z_max]
@@ -143,6 +145,12 @@ class BEVDataset(Dataset):
 
     def __getitem__(self, idx):
         data = torch.load(self.files[idx], weights_only=False)
+
+        data["radar_target"] = build_bev_target(
+            data["radar"], 
+            grid_size=self.grid_size[:2], 
+            num_rad_channels=self.num_rad_channels
+        )
 
         cam = data["cam_bev"].float()
 

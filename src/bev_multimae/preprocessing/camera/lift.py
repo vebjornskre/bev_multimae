@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 
 from bev_multimae.preprocessing.camera.depth import DepthEstimator
 from bev_multimae.visualization.camera_points_viz import plot_lifted_points
-from bev_multimae.preprocessing.get_transforms import T_rad_to_ego, T_cam_to_ego, apply_transform
+from bev_multimae.preprocessing.get_transforms import apply_transform
 from bev_multimae.preprocessing.camera.camera_depth_calibration import calibrate_depth_with_sensor
 
 log = logging.getLogger(__name__)

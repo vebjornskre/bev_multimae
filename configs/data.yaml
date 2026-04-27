@@ -44,7 +44,7 @@ point_cloud_range: [1.5, -6, -5, 28.5, 21, 20]
 
 hi_res_voxel: [0.1, 0.1, 25]
 cam_channels: 3 # RBG
-rad_channels: 9
+rad_channels: 11
 
 # Point cloud specific 
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)

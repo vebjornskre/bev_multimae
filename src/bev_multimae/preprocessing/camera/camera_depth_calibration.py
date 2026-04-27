@@ -13,7 +13,7 @@ import hydra
 from omegaconf import DictConfig
 
 # from bev_multimae.preprocessing.mcap_reader import apply_transform
-from bev_multimae.preprocessing.get_transforms import T_lid_to_cam, T_rad_to_cam, apply_transform
+from bev_multimae.preprocessing.get_transforms import apply_transform
 from bev_multimae.visualization.depth_calibration_viz import plot_depth_residuals, visualize_calibration_fit, visualize_projection
 
 log = logging.getLogger(__name__)

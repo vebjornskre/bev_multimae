@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 def main(cfg: DictConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # sample_idx = 40
+    sample_idx = 40
     # sample_idx = 90
     # sample_idx = 140
     # sample_idx = 190
@@ -33,7 +33,7 @@ def main(cfg: DictConfig):
     # sample_idx = 520
     # sample_idx = 580
     # sample_idx = 630
-    sample_idx = 690
+    # sample_idx = 690
     # sample_idx = 740
     
 
@@ -98,7 +98,7 @@ def main(cfg: DictConfig):
             dim_tokens_enc=hp['dim_tokens'],
         ),
         "radar": SpatialOutputAdapter(
-            num_channels=meta['num_rad_channels'],
+            num_channels=hp['num_rad_channels'],
             stride_level=1,
             patch_size_full=(1, 1),
             image_size=(grid_size[1], grid_size[0]),
@@ -133,7 +133,7 @@ def main(cfg: DictConfig):
             batch,
             mask_inputs=True,
             # num_encoded_tokens=hp['num_encoded_tokens']
-            num_encoded_tokens=350
+            num_encoded_tokens=158
         )
 
     img_mean = ds.img_mean.to(device)
@@ -156,6 +156,7 @@ def main(cfg: DictConfig):
 
     composite = cam_pred * cam_mask + cam_input * (1 - cam_mask)
 
+    # preds["cam_bev"] = cam_pred
     preds["cam_bev"] = composite
     batch["cam_bev"] = cam_input
 

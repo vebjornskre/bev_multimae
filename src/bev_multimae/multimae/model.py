@@ -231,7 +231,6 @@ class Bev_MultiMAE(nn.Module):
         else:
             num_encoded_tokens = sum([tensor.shape[1] for tensor in input_task_tokens.values()])
 
-        print(sum([tensor.shape[1] for tensor in input_task_tokens.values()]))
         ## Generating masks
         if task_masks is None:
             task_masks, ids_keep, ids_restore = self.generate_random_masks(

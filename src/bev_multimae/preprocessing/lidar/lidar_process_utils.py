@@ -5,7 +5,7 @@ import glob
 
 from omegaconf import DictConfig
 
-from bev_multimae.preprocessing.get_transforms import T_lid_to_ego, apply_transform
+from bev_multimae.preprocessing.get_transforms import apply_transform
 
 log = logging.getLogger(__name__)
 
