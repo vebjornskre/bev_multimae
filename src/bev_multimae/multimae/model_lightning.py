@@ -5,16 +5,20 @@ from bev_multimae.multimae.criterion import MaskedMSELoss, MaskedL1Loss
 
 class BevMultiMAELightning(pl.LightningModule):
     def __init__(self, model, lr=1e-4, weight_decay=0.01, num_encoded_tokens=288, 
-             norm_pix=False, depth=6, num_heads=8, dim_tokens=256, warmup_steps=500):
+             norm_pix=False, depth=6, num_heads=8, dim_tokens=256, warmup_steps=500, 
+             drop_path_rate=0.0, drop_rate=0.0, attn_drop_rate=0.0, data_aug=False):
         super().__init__()
         self.model = model
         self.lr = lr
         self.cam_loss = MaskedMSELoss(patch_size=15, stride=1, norm_pix=norm_pix)
         self.cam_l1   = MaskedL1Loss(patch_size=15, stride=1, norm_pix=norm_pix)
-        self.rad_loss = MaskedMSELoss(patch_size=1, stride=1, norm_pix=False)
+        self.rad_loss = MaskedL1Loss(patch_size=1, stride=1, norm_pix=False)
         self.num_encoded_tokens = num_encoded_tokens
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
+        self.drop_path_rate = drop_path_rate
+        self.drop_rate = drop_rate
+        self.attn_drop_rate = attn_drop_rate
 
         self.save_hyperparameters(ignore=["model"])
     
@@ -56,18 +60,24 @@ class BevMultiMAELightning(pl.LightningModule):
         cam = self.cam_loss(preds["cam_bev"], batch["cam_bev"], task_masks["cam_bev"])
         l1  = self.cam_l1(preds["cam_bev"], batch["cam_bev"], task_masks["cam_bev"])
         # grad = self.gradient_loss(preds["cam_bev"], batch["cam_bev"], task_masks["cam_bev"])
+        camera_weight = 5
 
         rad_pred   = preds["radar"]
         rad_target = batch["radar_target"].to(rad_pred.device)
 
-        # occ_loss = F.binary_cross_entropy_with_logits(
-        #     rad_pred[:, 0:1], rad_target[:, 0:1],
-        #     pos_weight=torch.tensor(10.0).to(rad_pred.device)
-        # )
-        # reg_loss = self.rad_loss(rad_pred[:, 1:], rad_target[:, 1:], task_masks["radar"])
+        occ_loss = F.binary_cross_entropy_with_logits(
+            rad_pred[:, 0:1], rad_target[:, 0:1],
+            pos_weight=torch.tensor(10.0).to(rad_pred.device)
+        )
 
-        # return cam + 0.3 * l1 + 0.1 * grad + occ_loss + reg_loss
-        return cam + 0.1 * l1
+        occ_mask  = (rad_target[:, 0:1] > 0.5).float()
+        reg_loss  = self.rad_loss(rad_pred[:, 1:] * occ_mask, rad_target[:, 1:] * occ_mask, task_masks["radar"])
+
+        cam_loss  = camera_weight * (cam + 0.1 * l1)
+        rad_loss  = occ_loss + reg_loss
+
+
+        return cam_loss + rad_loss
 
     def configure_optimizers(self):
         decay, no_decay = [], []
@@ -85,8 +95,15 @@ class BevMultiMAELightning(pl.LightningModule):
         ]
         optimizer = torch.optim.AdamW(param_groups, lr=self.lr)
 
-        scheduler = torch.optim.lr_scheduler.LinearLR(
+        total_steps = self.trainer.estimated_stepping_batches
+        warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=0.01, end_factor=1.0, total_iters=self.warmup_steps
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=total_steps - self.warmup_steps, eta_min=1e-6
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup, cosine], milestones=[self.warmup_steps]
         )
 
         return {

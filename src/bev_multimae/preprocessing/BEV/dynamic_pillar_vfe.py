@@ -180,6 +180,8 @@ def build_bev_target(batch_dict, grid_size, num_rad_channels):
     pts = batch_dict['points']
 
     nx, ny = grid_size
+    if pc.shape[0] == 0:
+        return torch.zeros(1, num_rad_channels, ny, nx, device=pts.device)
     B = int(pc[:, 0].max().item()) + 1
 
     bev = torch.zeros(B, num_rad_channels, ny, nx, device=pts.device)

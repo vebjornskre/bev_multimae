@@ -1,5 +1,5 @@
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import logging
 import os
 import torch
@@ -15,73 +15,100 @@ log = logging.getLogger(__name__)
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
 
+    direction = 'right' # can also be left and right
+
     prof = cProfile.Profile()
 
     log.info('Initializing pipeline...')
-
-    pipeline = BEVPipeline(cfg)
-    
+    pipeline = BEVPipeline(cfg)  
     log.info('Pipeline initialized')
 
-    save_dir = os.path.join(cfg.processed_data_dir, "train")
-    os.makedirs(save_dir, exist_ok=True)
+    glob_index = 0
 
     sum_ = torch.zeros(3)
     sum_sq = torch.zeros(3)
     count = 0
-
     num_feats = None
 
-    frames = sync_frames(cfg)
+    events = sorted(os.listdir(cfg.mcap_extract_path))
+    n_events = len(events)
 
     prof.enable()
 
-    for i in range(78):
-        # j = i + 102
-        j = i
-        frame = frames[j]
+    for event_idx, event in enumerate(events):
+        log.info(f'Processing event {event_idx}/{n_events}')
 
-        log.info(f'Processing frame {j}')
-        output = pipeline.process(frame)
+        save_dir = os.path.join(cfg.processed_data_dir, "train", event)
+        if os.path.exists(save_dir):
+            log.info(f'Skipping {event} — already processed')
+            continue
 
-        ego = output["pts_rad_ego"]
+        os.makedirs(save_dir, exist_ok=True)
 
-        if num_feats is None:
-            num_feats = ego.shape[1]
+        OmegaConf.update(cfg, "camera_info", f"data/raw/mcap_extract/{event}/camera/front_{direction}/camera_info.npz")
+        OmegaConf.update(cfg, "radar_raw_path", f"data/raw/mcap_extract/{event}/radar/front_{direction}")
+        OmegaConf.update(cfg, "imgs_raw_path", f"data/raw/mcap_extract/{event}/camera/front_{direction}")
+        OmegaConf.update(cfg, "lidar_raw_path", f"data/raw/mcap_extract/{event}/lidar/front_top")
+        OmegaConf.update(cfg, "mcap_path", os.path.join(cfg.bags_path, f"{event}.mcap"))
 
-        x = torch.from_numpy(ego[:, 3:6]).float()
+        os.makedirs(save_dir, exist_ok=True)
 
-        sum_ += x.sum(0)
-        sum_sq += (x * x).sum(0)
-        count += x.shape[0]
+        lidar_path = os.path.join(cfg.mcap_extract_path, event, "lidar", "front_top")
+        if not os.path.exists(lidar_path) or not os.listdir(lidar_path):
+            log.warning(f'Skipping {event} — empty or missing lidar folder')
+            continue
 
-        if cfg.plotting:
-            img = load_img(frame['cam'])
-            img_with_radar = overlay_radar_on_image(cfg, img, output['pts_rad_ego'], pipeline.T_cam_ego)
+        radar_path = os.path.join(cfg.mcap_extract_path, event, "radar", f"front_{direction}")
+        if not os.path.exists(radar_path) or not os.listdir(radar_path):
+            log.warning(f'Skipping {event} — empty or missing radar folder')
+            continue
 
-            plot_bev_comparison(
-                cfg,
-                img_with_radar,
-                output['pts_rad_ego'],
-                output['bev_cam_hires'],
-                pipeline.voxel_size,
-                pipeline.point_cloud_range,
-                pipeline.patch_size_pixels,
-                j
-            )
+        frames = sync_frames(cfg)
 
-        save_path = os.path.join(save_dir, f"{j:06d}.pt")
+        for j, frame in enumerate(frames):
 
-        torch.save({
-            "cam_bev": output["bev_cam_hires"].float(),
-            "radar": output["batch_dict_rad"],
-            "radar_target": output["bev_radar_target"].float(),
-        }, save_path)
+            frame = frames[j]
 
-        log.info(f'Finished frame {j}')
+            log.info(f'Processing frame {j}/{len(frames)}')
+            output = pipeline.process(frame)
 
-        if i == 50:
-            break
+            ego = output["pts_rad_ego"]
+
+            if num_feats is None:
+                num_feats = ego.shape[1]
+
+            x = torch.from_numpy(ego[:, 3:6]).float()
+
+            sum_ += x.sum(0)
+            sum_sq += (x * x).sum(0)
+            count += x.shape[0]
+
+            if j == 0:
+                img = load_img(frame['cam'])
+                img_with_radar = overlay_radar_on_image(cfg, img, output['pts_rad_ego'], pipeline.T_cam_ego)
+
+                plot_bev_comparison(
+                    cfg,
+                    img_with_radar,
+                    output['pts_rad_ego'],
+                    output['bev_cam_hires'],
+                    pipeline.voxel_size,
+                    pipeline.point_cloud_range,
+                    pipeline.patch_size_pixels,
+                    event,
+                    j
+                )
+
+            save_idx = j + glob_index
+            save_path = os.path.join(save_dir, f"{save_idx:06d}.pt")
+
+            torch.save({
+                "cam_bev": output["bev_cam_hires"].float(),
+                "radar": output["batch_dict_rad"],
+                "radar_target": output["bev_radar_target"].float(),
+            }, save_path)
+
+        glob_index += len(frames)
 
     prof.disable()
     prof.dump_stats("profile.prof")

@@ -2,6 +2,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 from einops import rearrange
+import logging
 
 import hydra
 from omegaconf import DictConfig
@@ -16,20 +17,53 @@ from bev_multimae.visualization.predictions import viz_preds
 from bev_multimae.multimae.train_utils import *
 
 
+log = logging.getLogger(__name__)
+
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    sample_idx = 300
+    # sample_idx = 40
+    # sample_idx = 90
+    # sample_idx = 140
+    # sample_idx = 190
+    # sample_idx = 230
+    # sample_idx = 350  
+    # sample_idx = 400
+    # sample_idx = 520
+    # sample_idx = 580
+    # sample_idx = 630
+    sample_idx = 690
+    # sample_idx = 740
+    
 
-    img_mean, img_std = compute_img_stats(cfg.processed_data_dir) 
-    rad_mean, rad_std = compute_radar_stats(cfg.processed_data_dir)
+    log.info(f'Predicting idx {sample_idx} in the validation set')
+
+    try: 
+        ms = torch.load(os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
+        img_mean, img_std, rad_mean, rad_std = (ms['img_mean'], ms['img_std'], ms['rad_mean'], ms['rad_mean'])
+    except:
+        img_mean, img_std = compute_img_stats(cfg.processed_data_dir) 
+        rad_mean, rad_std = compute_radar_stats(cfg.processed_data_dir)
+        ms = {
+            'img_mean' : img_mean,
+            'img_std'  : img_std,
+            'rad_mean' : rad_mean,
+            'rad_std'  : rad_std,
+        }
+        torch.save(ms, os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
 
     ds = BEVDataset(
         cfg.processed_data_dir, split="val", 
         img_mean=img_mean, img_std=img_std,
-        rad_mean=rad_mean, rad_std=rad_std
+        rad_mean=rad_mean, rad_std=rad_std,
+        augment=cfg.augment, h_flip_rate=1.0,
+        v_flip_rate=1.0, rot_rate=1.0,
+        rot_angle=cfg.rot_angle, point_cloud_range=cfg.point_cloud_range
         )
+
+    print(len(ds))
+
     sample = ds[sample_idx]
     batch = collate_radar([sample])
 
@@ -41,11 +75,15 @@ def main(cfg: DictConfig):
     nx_hi, ny_hi = grid_size_hires[:2]
     patch_size = (ny_hi // ny, nx_hi // nx)
 
+    ckpt_path = os.path.join(cfg.model_folder, f'{cfg.best_model}.ckpt')
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    hp = ckpt["hyper_parameters"]
+
     dim_tokens = cfg.dim_tokens
 
     input_adapters = {
-        "radar": RadarAdapter(dim_tokens, grid_size, meta['num_point_features'], cfg.num_vfe_features),
-        "cam_bev": CameraAdapter(dim_tokens, cfg.cam_channels, patch_size, grid_size_hires),
+        "radar": RadarAdapter(hp['dim_tokens'], grid_size, meta['num_point_features'], cfg.num_vfe_features),
+        "cam_bev": CameraAdapter(hp['dim_tokens'], cfg.cam_channels, patch_size, grid_size_hires),
     }
 
     output_adapters = {
@@ -56,8 +94,8 @@ def main(cfg: DictConfig):
             image_size=(grid_size_hires[1], grid_size_hires[0]),
             task="cam_bev",
             context_tasks=["cam_bev", "radar"],
-            dim_tokens=dim_tokens,
-            dim_tokens_enc=dim_tokens,
+            dim_tokens=hp['dim_tokens'],
+            dim_tokens_enc=hp['dim_tokens'],
         ),
         "radar": SpatialOutputAdapter(
             num_channels=meta['num_rad_channels'],
@@ -66,23 +104,9 @@ def main(cfg: DictConfig):
             image_size=(grid_size[1], grid_size[0]),
             task="radar",
             context_tasks=["cam_bev", "radar"],
-            dim_tokens_enc=dim_tokens,
+            dim_tokens_enc=hp['dim_tokens'],
         ),
     }
-
-    ckpt_path = os.path.join(cfg.model_folder, 'best_model_epoch=84_val_loss=0.7534.ckpt')
-    ckpt = torch.load(ckpt_path, map_location="cpu")
-    hp = ckpt["hyper_parameters"]
-    # hp = {
-    #     "depth": 10,
-    #     "num_heads": 8,
-    #     "dim_tokens": 256,
-    #     "lr": cfg.lr,
-    #     "weight_decay": cfg.weight_decay,
-    #     "num_encoded_tokens": cfg.num_encoded_tokens,
-    #     "norm_pix": cfg.norm_pix,
-    # }
-
 
     model = Bev_MultiMAE(
         input_adapters=input_adapters,
@@ -108,7 +132,8 @@ def main(cfg: DictConfig):
         preds, masks = model(
             batch,
             mask_inputs=True,
-            num_encoded_tokens=cfg.num_encoded_tokens
+            # num_encoded_tokens=hp['num_encoded_tokens']
+            num_encoded_tokens=350
         )
 
     img_mean = ds.img_mean.to(device)

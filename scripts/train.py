@@ -21,31 +21,90 @@ from bev_multimae.multimae.train_utils import *
 
 log = logging.getLogger(__name__)
 
+import matplotlib.pyplot as plt
+import torch
+
+def viz_augment(dataset, idx=0):
+    data = torch.load(dataset.files[idx], weights_only=False)
+    cam_orig = data["cam_bev"].float()
+    pts_orig = data["radar"]["points"].clone()
+
+    # force all augmentations on
+    orig_h, orig_v, orig_r = dataset.h_flip_rate, dataset.v_flip_rate, dataset.rot_rate
+    dataset.h_flip_rate = 1.0
+    dataset.v_flip_rate = 1.0
+    dataset.rot_rate = 1.0
+
+
+    cam_aug, radar_aug, target_aug = dataset.augment_sample(cam_orig, data["radar"]["points"])
+
+
+    dataset.h_flip_rate, dataset.v_flip_rate, dataset.rot_rate = orig_h, orig_v, orig_r
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    axes[0, 0].imshow(cam_orig.permute(1, 2, 0).numpy().clip(0, 1), origin='lower')
+    axes[0, 0].set_title("Cam BEV original")
+
+    axes[0, 1].imshow(cam_aug.permute(1, 2, 0).numpy().clip(0, 1), origin='lower')
+    axes[0, 1].set_title("Cam BEV augmented")
+
+    axes[1, 0].scatter(pts_orig[:, 1].numpy(), pts_orig[:, 2].numpy(), s=2)
+    axes[1, 0].set_title("Radar points original")
+    axes[1, 0].set_aspect("equal")
+
+    pts_aug = radar_aug["points"]
+    axes[1, 1].scatter(pts_aug[:, 1].numpy(), pts_aug[:, 2].numpy(), s=2)
+    axes[1, 1].set_title("Radar points augmented")
+    axes[1, 1].set_aspect("equal")
+
+    plt.tight_layout()
+    plt.savefig("augment_check.png")
+    print("Saved augment_check.png")
+
+
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
+    torch.set_float32_matmul_precision('high')
+    
     # Load and create dataset
     data_path = cfg.processed_data_dir
 
     # DATASET INITIALIZATION
-    img_mean, img_std = compute_img_stats(data_path) 
-    rad_mean, rad_std = compute_radar_stats(data_path)
-
-    # I don't have val and test yet
-    # val_ds  = BEVDataset(data_path, split="val",  img_mean=img_mean, img_std=img_std)
-    # test_ds = BEVDataset(data_path, split="test", img_mean=img_mean, img_std=img_std)
+    try: 
+        ms = torch.load(os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
+        img_mean, img_std, rad_mean, rad_std = (ms['img_mean'], ms['img_std'], ms['rad_mean'], ms['rad_mean'])
+    except:
+        img_mean, img_std = compute_img_stats(cfg.processed_data_dir) 
+        rad_mean, rad_std = compute_radar_stats(cfg.processed_data_dir)
+        ms = {
+            'img_mean' : img_mean,
+            'img_std'  : img_std,
+            'rad_mean' : rad_mean,
+            'rad_std'  : rad_std,
+        }
+        torch.save(ms, os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
 
     # Re-init train with same stats
     train_ds = BEVDataset(
         data_path, split="train", 
         img_mean=img_mean, img_std=img_std,
-        rad_mean=rad_mean, rad_std=rad_std
+        rad_mean=rad_mean, rad_std=rad_std,
+        augment=cfg.augment, h_flip_rate=cfg.h_flip_rate,
+        v_flip_rate=cfg.v_flip_rate, rot_rate=cfg.rot_rate,
+        rot_angle=cfg.rot_angle, point_cloud_range=cfg.point_cloud_range
         )
+
     
     val_ds = BEVDataset(
         data_path, split="val", 
         img_mean=img_mean, img_std=img_std,
         rad_mean=rad_mean, rad_std=rad_std
         )
+
+    viz_augment(train_ds, idx=150)
+
+
 
     log.info(f'Number of samples: {len(train_ds)}')
 
@@ -116,7 +175,7 @@ def main(cfg: DictConfig):
         monitor="val_loss",
         mode="min",
         save_top_k=cfg.save_top_k,
-        save_last=True,
+        save_last=False,
     )
     
     # WandB logging
@@ -145,6 +204,7 @@ def main(cfg: DictConfig):
         num_workers=cfg.num_workers,
         pin_memory=True,
         persistent_workers=True,
+        prefetch_factor = cfg.prefetch_factor,
         collate_fn=collate_radar,
         shuffle=True
         )
@@ -159,12 +219,17 @@ def main(cfg: DictConfig):
         shuffle=False
         )
 
+    
+
     model = Bev_MultiMAE(
         input_adapters=input_adapters,
         output_adapters=output_adapters,
         dim_tokens=dim_tokens,
         depth=cfg.depth,
-        num_heads=cfg.num_heads
+        num_heads=cfg.num_heads,
+        drop_path_rate = cfg.drop_path_rate,
+        drop_rate = cfg.drop_rate,
+        attn_drop_rate = cfg.attn_drop_rate
     )
 
     model_lightning = BevMultiMAELightning(
@@ -176,7 +241,11 @@ def main(cfg: DictConfig):
         depth=cfg.depth,
         num_heads=cfg.num_heads,
         dim_tokens=cfg.dim_tokens,
-        warmup_steps=cfg.warmup_steps
+        warmup_steps=cfg.warmup_steps,
+        drop_path_rate = cfg.drop_path_rate,
+        drop_rate = cfg.drop_rate,
+        attn_drop_rate = cfg.attn_drop_rate,
+        data_aug=cfg.augment
     )
 
     trainer = Trainer(
@@ -187,34 +256,56 @@ def main(cfg: DictConfig):
         callbacks=[checkpoint_callback],
         default_root_dir=cfg.model_folder,
         log_every_n_steps=cfg.log_every_n_steps,
-        gradient_clip_val=1.0
+        gradient_clip_val=1.0,
     )
 
-    ckpt_path = os.path.join(cfg.model_folder, "best_model_epoch=37_val_loss=0.0000.ckpt")
+    ckpt_path = os.path.join(cfg.model_folder, f'{cfg.best_model}.ckpt')
+    log.info(f'Checkpoint exists: {os.path.exists(ckpt_path)} — {ckpt_path}')
     continue_training = cfg.continue_training
 
     os.makedirs(cfg.model_folder, exist_ok=True)
 
     if continue_training and os.path.exists(ckpt_path):
+        log.info(f'Continue training of {cfg.best_model}')
+
         ckpt = torch.load(ckpt_path, map_location="cpu")
         hp = ckpt["hyper_parameters"]
 
+        input_adapters = {
+            "radar": RadarAdapter(hp['dim_tokens'], grid_size, meta['num_point_features'], cfg.num_vfe_features),
+            "cam_bev": CameraAdapter(hp['dim_tokens'], cfg.cam_channels, patch_size, grid_size_hires),
+        }
+        output_adapters = {
+            "cam_bev": SpatialOutputAdapter(
+                num_channels=meta['num_cam_channels'], stride_level=1,
+                patch_size_full=patch_size, image_size=(grid_size_hires[1], grid_size_hires[0]),
+                task="cam_bev", context_tasks=["cam_bev", "radar"],
+                dim_tokens=hp['dim_tokens'], dim_tokens_enc=hp['dim_tokens'],
+            ),
+            "radar": SpatialOutputAdapter(
+                num_channels=meta['num_rad_channels'], stride_level=1,
+                patch_size_full=(1, 1), image_size=(grid_size[1], grid_size[0]),
+                task="radar", context_tasks=["cam_bev", "radar"],
+                dim_tokens_enc=hp['dim_tokens'],
+            ),
+        }
         model = Bev_MultiMAE(
-            input_adapters=input_adapters,
-            output_adapters=output_adapters,
-            dim_tokens=hp["dim_tokens"],
-            depth=hp["depth"],
-            num_heads=hp["num_heads"],
+            input_adapters=input_adapters, output_adapters=output_adapters,
+            dim_tokens=hp["dim_tokens"], depth=hp["depth"], num_heads=hp["num_heads"],
         )
 
-        model_lightning = BevMultiMAELightning.load_from_checkpoint(
-            ckpt_path, model=model
-        )
-
-    trainer.fit(model_lightning, train_loader, val_loader)
-
-    trainer.save_checkpoint(ckpt_path)
-    print(f"Saved checkpoint to {ckpt_path}")
+        if cfg.new_lr:
+            # weights only, fresh optimizer/scheduler with cfg.lr
+            model_lightning = BevMultiMAELightning.load_from_checkpoint(
+                ckpt_path, model=model, lr=cfg.lr
+            )
+            trainer.fit(model_lightning, train_loader, val_loader)
+        else:
+            # full resume, optimizer and scheduler state restored
+            model_lightning = BevMultiMAELightning.load_from_checkpoint(ckpt_path, model=model)
+            trainer.fit(model_lightning, train_loader, val_loader, ckpt_path=ckpt_path)
+    else:
+        trainer.fit(model_lightning, train_loader, val_loader)
 
     model_lightning.model.eval()
     model_lightning.model.cuda()
@@ -245,9 +336,6 @@ def main(cfg: DictConfig):
                         .repeat_interleave(pw, dim=2)\
                         .unsqueeze(1).float()
 
-        print("task_masks cam_bev shape:", task_masks["cam_bev"].shape)
-        print("task_masks cam_bev sum:", task_masks["cam_bev"].sum().item())
-        print("cam_mask sum:", cam_mask.sum().item())
 
         # composite logic
         if cam_mask.sum() == 0:
@@ -279,9 +367,6 @@ def main(cfg: DictConfig):
             cfg.plot_folder
         )
 
-        print("preds cam_bev:", preds["cam_bev"].shape)
-        print("cam_mask:", cam_mask.shape)
-        print("batch cam_bev:", batch["cam_bev"].shape)
 
 if __name__ == '__main__':
     main()
