@@ -64,7 +64,6 @@ class BEVDataset(Dataset):
 
         skip_events = {
             "evt_0dpi1jtdkfL4ReZx", "evt_0e3qdKh444ogAO7k",
-            "evt_0e3qWOZPmBcxw6le", "evt_0e3qWOZPmBcxw6le",
             "evt_0e3qYFzAbTyiJEC0", "evt_0e3qZ3gUUyKSySmG",
             "evt_0e8RBM8c9lbnJIcY", "evt_0e8RGcuJoVLx95HV",
             "evt_0e8RGh9h8HVd0mMN", "evt_0e8RHpfQW2EAsyh5",
@@ -72,7 +71,9 @@ class BEVDataset(Dataset):
             "evt_0e8RPtAGjsFkH7iI", "evt_0e8RSXbBo3Nf3CKl",
             "evt_0e8RPwdTi1LVwWTv", "evt_0e8RQ2Rhx24bzKAg",
             "evt_0e8RQLQbupv7ze9a", "evt_0e8RQQaclY2VF8AH",
-            "evt_0e3qWOZPmBcxw6le"
+            "evt_0e3qWOZPmBcxw6le", "evt_0e8RQAbtPO6JP3vW",
+            "evt_0e8RQERZvAsEOyqv", "evt_0e8RQHjqh4N42EFm",
+            "evt_0e8RQ72r2D5Pu6Vm", "evt_0e3qXR4PFsSC3qha"
             
             }  # folders to skip
 

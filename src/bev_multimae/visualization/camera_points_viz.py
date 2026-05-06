@@ -18,7 +18,16 @@ def plot_lifted_points(cfg, pts, colors, img, meshlab=False):
     fname = os.path.join(f'lifted_points_{cfg.depth_model}.png')
     save_path = os.path.join(plot_folder, fname)
 
-    valid = ~np.isnan(pts).any(axis=1)
+    # valid = ~np.isnan(pts).any(axis=1)
+    valid = (
+        np.isfinite(pts).all(axis=1)
+        & (pts[:, 0] > 0)
+        & (pts[:, 0] < 50)
+        & (pts[:, 1] > -30)
+        & (pts[:, 1] < 30)
+        & (pts[:, 2] > -5)
+        & (pts[:, 2] < 5)
+    )
 
     # Downsampling
     step = 1

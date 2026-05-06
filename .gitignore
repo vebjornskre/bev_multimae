@@ -19,6 +19,7 @@ data/raw/
 data/processed/
 
 # Trained models
+model_checkpoints/
 models/
 *.ckpt
 *.pth

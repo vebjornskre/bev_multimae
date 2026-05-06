@@ -3,6 +3,7 @@ import os
 import numpy as np
 from pathlib import Path
 from PIL import Image
+import torch
 
 def load_img(path: str = None) -> dict:
     return Image.open(path).convert("RGB")
@@ -54,8 +55,25 @@ def load_lidar(path: str = None) -> dict:
 
     return xyz[valid]
 
+def load_seg(path: str = None):
+    if path is None or not os.path.exists(path):
+        return None
+
+    seg = np.load(path)  # (H, W)
+    return seg
+    # return torch.from_numpy(seg).float()
+    # return torch.from_numpy(seg).long()
+
+def load_bbox(path: str = None):
+    if path is None or not os.path.exists(path):
+        return None
+    return np.load(path)
+
 def get_files(folder, ext):
     return sorted(glob.glob(os.path.join(folder, ext)))
+
+def has_seg_points(path) -> bool:
+    return np.any(np.load(path) != 0)
 
 def find_closest_idx(target_ts: int, timestamps: np.ndarray) -> int:
     idx = np.searchsorted(timestamps, target_ts)
@@ -74,23 +92,39 @@ def find_n_closest_idx(target_ts, timestamps, files, n=3):
     idxs = np.sort(idxs)
     return [files[i] for i in idxs]
 
-def sync_frames(cfg) -> list[dict]:
+
+def sync_frames(cfg, seg=False) -> list[dict]:
     cam_files = get_files(cfg.imgs_raw_path, "*.jpg")
     rad_files = get_files(cfg.radar_raw_path, "*.bin")
     lid_files = get_files(cfg.lidar_raw_path, "*.bin")
+    seg_files = get_files(cfg.seg_raw_path, "*.npy")
+    bbox_files = get_files(cfg.bbox_raw_path, "*.npy")
 
     rad_ts = np.array([int(Path(f).stem) for f in rad_files])
     lid_ts = np.array([int(Path(f).stem) for f in lid_files])
 
+    seg_map = {int(Path(f).stem): f for f in seg_files}
+    bbox_map = {int(Path(f).stem): f for f in bbox_files}
+
     frames = []
     for cam_path in cam_files:
         cam_ts = int(Path(cam_path).stem)
+
         rad_paths = find_n_closest_idx(cam_ts, rad_ts, rad_files, n=cfg.num_radar_frames)
         lid_idx = find_closest_idx(cam_ts, lid_ts)
+
+        seg_path = seg_map.get(cam_ts, None)
+        bbox_path = bbox_map.get(cam_ts, None)
+
+        if seg and (seg_path is None or not has_seg_points(seg_path)):
+            continue
+
         frames.append({
             "cam": cam_path,
             "rad": rad_paths,
             "lid": lid_files[lid_idx],
+            "seg": seg_path,
+            "bbox": bbox_path
         })
 
     return frames

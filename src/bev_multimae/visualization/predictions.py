@@ -83,8 +83,10 @@ def viz_preds(preds, batch, folder, radar_channel=None):
             pred = v[0].detach().cpu().permute(1, 2, 0).numpy()
             inp  = batch["cam_bev"][0].cpu().permute(1, 2, 0).numpy()
 
-            pred = minmax_per_channel(pred)
-            inp  = minmax_per_channel(inp)
+            # pred = minmax_per_channel(pred)
+            # inp  = minmax_per_channel(inp)
+            pred = np.clip(pred, 0, 1)
+            inp  = np.clip(inp, 0, 1)
 
             fig, axes = plt.subplots(1, 2, figsize=(10, 5))
             axes[0].imshow(inp[..., :3], origin="lower")

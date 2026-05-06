@@ -30,15 +30,17 @@ class CameraAdapter(nn.Module):
             nn.Linear(patch_dim, d_model),
             nn.LayerNorm(d_model)
         )
-
-        self.positional_embedding = positional_encoding_2d(
+        
+        self.register_buffer('positional_embedding', positional_encoding_2d(
             nph = H // self.patch_h, 
             npw = W // self.patch_w,
             dim = d_model,
-        )
+        ))
+
      
     def forward(self, img):
         tokens = self.to_patch_embedding(img)
-        tokens = tokens + self.positional_embedding.to(tokens.device).unsqueeze(0)
+        # tokens = tokens + self.positional_embedding.to(tokens.device).unsqueeze(0)
+        tokens = tokens + self.positional_embedding.unsqueeze(0)
         tokens = tokens + self.task_embedding
         return tokens

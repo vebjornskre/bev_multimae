@@ -7,14 +7,23 @@ mcap_extract_path: "data/raw/mcap_extract"
 radar_raw_path: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/radar/front_right/"
 imgs_raw_path: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/camera/front_right/"
 lidar_raw_path: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/lidar/front_top"
+seg_raw_path: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/seg/front_right"
+bbox_raw_path: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/bbox/front_right"
 
 transforms_path: "data/transforms"
 
 camera_info: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/camera/front_right/camera_info.npz"
+
 processed_data_dir: "data/processed"
+processed_data_dir_right: "data/processed/right"
+processed_data_dir_left: "data/processed/left"
+
 # mcap_path: "data/raw/agriRobotData.mcap"
-mcap_path: "data/raw/bags/evt_0e8RBfDxhnHKvZ7a.mcap"
+mcap_path: "data/raw/bags/evt_0e8RSwkcSts5kEaF.mcap"
 bags_path: "data/raw/bags"
+
+# Visualization paths
+finetuning_vis: 'reports/figures/finetuning'
 
 
 # Models
@@ -31,16 +40,17 @@ lidar_frame: 140
 
 # BEV
 
+direction: left
+
 # # Original
 # voxel_size: [2.5, 2.5, 25]
-# point_cloud_range: [0, -10, -5, 40, 30, 20]
+# point_cloud_range: [0, -10, -5, 40, 30, 20] # Right camera
 # # Original end
-
 
 # # Zoomed in (no treeline)
 voxel_size: [1.5, 1.5, 25]
-point_cloud_range: [1.5, -6, -5, 28.5, 21, 20]
-
+right_point_cloud_range: [1.5, -6, -5, 28.5, 21, 20] # Right camera
+left_point_cloud_range: [1.5, -21, -5, 28.5, 6, 20]   # Left camera
 
 hi_res_voxel: [0.1, 0.1, 25]
 cam_channels: 3 # RBG
@@ -49,14 +59,19 @@ rad_channels: 11
 # Point cloud specific 
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
 ub_percent: [90, 95, 90]  # Upper bound percientiles of points to include (x,y,z)
+
+# Filtering
+
 #### ORIGINAL ####
 # rcs_m2_filter: 0.13          # m^2
 # snr_min: 15                  # dB
 ##################
+
 #### TESTING ####
 rcs_m2_filter: 0.00          # m^2
 snr_min: 2                  # dB
 ################# 
+
 min_dist: 5                  # m
 max_dist: 120                # m
 elevation_angle: -0.2        # rad

@@ -11,6 +11,7 @@ from bev_multimae.preprocessing.camera.depth import DepthEstimator
 from bev_multimae.visualization.camera_points_viz import plot_lifted_points
 from bev_multimae.preprocessing.get_transforms import apply_transform
 from bev_multimae.preprocessing.camera.camera_depth_calibration import calibrate_depth_with_sensor
+from bev_multimae.finetuning.seg_cloud_ops import make_flat_bools, get_seg_point_n_colors, get_all_segs
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +51,9 @@ def lift(
     T_cam_ego = None, 
     T_lid_cam = None,
     T_rad_cam = None,
-    plot=False
+    plot=False,
+    seg_mask=None,
+    bboxes=None
     ) -> tuple[np.ndarray, np.ndarray]:
     """Returns lifted 3D points (N,3) and RGB colors (N,3) in ego frame."""
 
@@ -89,6 +92,14 @@ def lift(
     ego_cam_pts = ego_cam_pts.reshape(-1, 3).numpy()
     colors = img_np.reshape(-1, 3)
 
+    if seg_mask is not None:
+        sep_segs = get_all_segs(seg_mask, bboxes, H, W)
+        flat_bools = make_flat_bools(sep_segs, H, W)
+        segs_pts, segs_colors = get_seg_point_n_colors(flat_bools, ego_cam_pts, colors, z_threshold=30)
+
+        for flat_bool in flat_bools:
+            colors[flat_bool==1] = [1.0, 0.0, 0.0]
+
     if plot:
         log.info('Plotting camera points for meshlab')
         plot_lifted_points(cfg, ego_cam_pts, colors, img, meshlab=True)
@@ -98,6 +109,9 @@ def lift(
         np.isfinite(ego_cam_pts).all(axis=1) &
         (ego_cam_pts[:, 2] < 5.0)
     )
+
+    if seg_mask is not None:
+        return ego_cam_pts[valid], colors[valid], segs_pts, segs_colors
     return ego_cam_pts[valid], colors[valid]
 
 
@@ -107,3 +121,6 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == '__main__':
     main()
+
+
+    # img_np[seg_mask == 1] = [1.0, 0.0, 0.0]

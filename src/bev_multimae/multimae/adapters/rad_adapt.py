@@ -27,11 +27,12 @@ class RadarAdapter(nn.Module):
             num_filters=num_vfe_features
         )
 
-        self.positional_embedding = positional_encoding_2d(
+        self.register_buffer('positional_embedding', positional_encoding_2d(
             nph = H,
             npw = W,
             dim = d_model,
-        )
+        ))
+
         self.proj = nn.Conv2d(self.scatter.out_features, d_model, 1)
     
     def forward(self, batch_dict):
@@ -39,7 +40,8 @@ class RadarAdapter(nn.Module):
         x = batch_dict["spatial_features"]        # [B, C, H, W]
         x = self.proj(x)                          # [B, d_model, H, W]
         x = x.flatten(2).transpose(1, 2)          # [B, N, d_model]
-        pos = self.positional_embedding.to(x.device)  # [N, d_model]
+        pos = self.positional_embedding           # [N, d_model]
+        # pos = self.positional_embedding.to(x.device)  # [N, d_model]
         x = x + pos.unsqueeze(0)                  # [B, N, d_model]
         x = x + self.task_embedding
         return x

@@ -93,7 +93,7 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
     ax_img.axis("off")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(save_folder, f"video/{event}_bev_overlay_{i}.png"), dpi=150)
+    plt.savefig(os.path.join(save_folder, f"video/left/{event}_bev_overlay_{i}.png"), dpi=150)
     plt.close(fig_overlay)
 
 

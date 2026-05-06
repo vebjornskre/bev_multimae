@@ -1,5 +1,5 @@
 # mcap_reader.py
-
+import cv2
 import sys
 import os
 import numpy as np
@@ -15,13 +15,17 @@ from hydra.utils import to_absolute_path
 file_path = 'data/raw/agriRobotData.mcap'
 
 TOPICS = {
-    "/sensing/camera/front_right/compressed_image": "data/raw/camera/front_right",
-    "/sensing/camera/front_right/camera_info":      "data/raw/camera/front_right",
-    "/sensing/radar/front_right/raw/points":        "data/raw/radar/front_right",
-    "/sensing/camera/front_left/compressed_image": "data/raw/camera/front_left",
-    "/sensing/camera/front_left/camera_info":      "data/raw/camera/front_left",
-    "/sensing/radar/front_left/raw/points":        "data/raw/radar/front_left",
-    "/sensing/lidar/front_top/raw/points":          "data/raw/lidar/front_top",
+    # "/sensing/camera/front_right/compressed_image": "camera/front_right",
+    # "/sensing/camera/front_right/camera_info":      "camera/front_right",
+    # "/sensing/radar/front_right/raw/points":        "radar/front_right",
+    # "/sensing/camera/front_left/compressed_image":  "camera/front_left",
+    # "/sensing/camera/front_left/camera_info":       "camera/front_left",
+    # "/sensing/radar/front_left/raw/points":         "radar/front_left",
+    # "/sensing/lidar/front_top/raw/points":          "lidar/front_top",
+    # "/sensing/camera/front_right/compressed_image/gt_seg/human": "seg/front_right",
+    # "/sensing/camera/front_left/compressed_image/gt_seg/human":  "seg/front_left",
+    "/sensing/camera/front_right/compressed_image/gt_bbox/human": "bbox/front_right",
+    "/sensing/camera/front_left/compressed_image/gt_bbox/human": "bbox/front_left"
 }
 
 
@@ -68,6 +72,60 @@ def list_transforms(input_path, verbose=True):
 
     return transforms
 
+def save_seg_mask(ros_msg, output_dir, timestamp):
+    H, W = 720, 1280
+    mask = np.zeros((H, W), dtype=np.uint8)
+    for ann in ros_msg.points:
+        for p in ann.points:
+            x, y = int(p.x), int(p.y)
+            if 0 <= x < W and 0 <= y < H:
+                mask[y, x] = 1
+    np.save(os.path.join(output_dir, f"{timestamp}.npy"), mask)
+
+
+def save_image(ros_msg, output_dir, timestamp):
+    with open(os.path.join(output_dir, f"{timestamp}.jpg"), "wb") as f:
+        f.write(ros_msg.data)
+
+
+def save_camera_info(ros_msg, output_dir):
+    np.savez(
+        os.path.join(output_dir, "camera_info.npz"),
+        K=np.array(ros_msg.k).reshape(3, 3),
+        D=np.array(ros_msg.d),
+        R=np.array(ros_msg.r).reshape(3, 3),
+        P=np.array(ros_msg.p).reshape(3, 4),
+        width=ros_msg.width,
+        height=ros_msg.height,
+        distortion_model=ros_msg.distortion_model,
+    )
+
+
+def save_lidar_points(ros_msg, output_dir, timestamp):
+    step = ros_msg.point_step
+    data = np.frombuffer(ros_msg.data, dtype=np.uint8).reshape(-1, step)
+    fields = {f.name: f.offset for f in ros_msg.fields}
+    xyz = np.stack([
+        data[:, fields[ax]:fields[ax]+4].view(np.float32).squeeze()
+        for ax in ("x", "y", "z")
+    ], axis=1)
+    xyz.astype(np.float32).tofile(os.path.join(output_dir, f"{timestamp}.bin"))
+
+
+def save_radar_points(ros_msg, output_dir, timestamp):
+    with open(os.path.join(output_dir, f"{timestamp}.bin"), "wb") as f:
+        f.write(ros_msg.data)
+
+
+def save_bboxes(ros_msg, output_dir, timestamp):
+    boxes = []
+    for ann in ros_msg.points:
+        xs = [p.x for p in ann.points]
+        ys = [p.y for p in ann.points]
+        boxes.append([min(xs), min(ys), max(xs), max(ys)])
+    np.save(os.path.join(output_dir, f"{timestamp}.npy"), np.array(boxes, dtype=np.float32))
+
+
 def extract(cfg, input_path):
     saved_camera_info = set()
     bag_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -75,51 +133,25 @@ def extract(cfg, input_path):
     with open(input_path, "rb") as f:
         reader = make_reader(f, decoder_factories=[DecoderFactory()])
         for schema, channel, message, ros_msg in reader.iter_decoded_messages(topics=list(TOPICS.keys())):
-            sensor_dir = TOPICS[channel.topic]
-            output_dir = os.path.join(bag_name, sensor_dir)
-            output_dir = os.path.join(cfg.mcap_extract_path, output_dir)
+            topic = channel.topic
+            output_dir = os.path.join(cfg.mcap_extract_path, bag_name, TOPICS[topic])
             os.makedirs(output_dir, exist_ok=True)
+            ts = message.log_time
 
-            timestamp = message.log_time
-
-            if "compressed_image" in channel.topic:
-                output_path = os.path.join(output_dir, f"{timestamp}.jpg")
-                with open(output_path, "wb") as img_file:
-                    img_file.write(ros_msg.data)
-
-            elif "camera_info" in channel.topic:
-                if channel.topic not in saved_camera_info:
-                    output_path = os.path.join(output_dir, "camera_info.npz")
-                    np.savez(
-                        output_path,
-                        K=np.array(ros_msg.k).reshape(3, 3),
-                        D=np.array(ros_msg.d),
-                        R=np.array(ros_msg.r).reshape(3, 3),
-                        P=np.array(ros_msg.p).reshape(3, 4),
-                        width=ros_msg.width,
-                        height=ros_msg.height,
-                        distortion_model=ros_msg.distortion_model,
-                    )
-                    saved_camera_info.add(channel.topic)
-
-            elif "lidar" in channel.topic and "points" in channel.topic:
-                point_step = ros_msg.point_step
-                data = np.frombuffer(ros_msg.data, dtype=np.uint8)
-                n_points = len(data) // point_step
-                raw = data.reshape(n_points, point_step)
-                fields = {f.name: f.offset for f in ros_msg.fields}
-                x = raw[:, fields["x"]:fields["x"]+4].view(np.float32).squeeze()
-                y = raw[:, fields["y"]:fields["y"]+4].view(np.float32).squeeze()
-                z = raw[:, fields["z"]:fields["z"]+4].view(np.float32).squeeze()
-                xyz = np.stack([x, y, z], axis=1)
-                output_path = os.path.join(output_dir, f"{timestamp}.bin")
-                xyz.astype(np.float32).tofile(output_path)
-
-            elif "points" in channel.topic:
-                output_path = os.path.join(output_dir, f"{timestamp}.bin")
-                with open(output_path, "wb") as pcd_file:
-                    pcd_file.write(ros_msg.data)
-
+            if "gt_bbox" in topic:
+                save_bboxes(ros_msg, output_dir, ts)
+            elif "gt_seg" in topic:
+                save_seg_mask(ros_msg, output_dir, ts)
+            elif "compressed_image" in topic:
+                save_image(ros_msg, output_dir, ts)
+            elif "camera_info" in topic:
+                if topic not in saved_camera_info:
+                    save_camera_info(ros_msg, output_dir)
+                    saved_camera_info.add(topic)
+            elif "lidar" in topic:
+                save_lidar_points(ros_msg, output_dir, ts)
+            elif "points" in topic:
+                save_radar_points(ros_msg, output_dir, ts)
 
 @hydra.main(config_path="../../../configs", config_name="data", version_base=None)
 def main(cfg: DictConfig) -> None:

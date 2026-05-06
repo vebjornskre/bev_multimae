@@ -6,6 +6,7 @@ import logging
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from torch.utils.data import ConcatDataset
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -17,50 +18,15 @@ from bev_multimae.multimae.model import Bev_MultiMAE
 from bev_multimae.multimae.model_lightning import BevMultiMAELightning
 from bev_multimae.datasets.data import BEVDataset, collate_radar
 from bev_multimae.visualization.predictions import viz_preds
+from bev_multimae.visualization.viz_augment import viz_augment
 from bev_multimae.multimae.train_utils import *
 
 log = logging.getLogger(__name__)
 
 import matplotlib.pyplot as plt
 import torch
+import cProfile
 
-def viz_augment(dataset, idx=0):
-    data = torch.load(dataset.files[idx], weights_only=False)
-    cam_orig = data["cam_bev"].float()
-    pts_orig = data["radar"]["points"].clone()
-
-    # force all augmentations on
-    orig_h, orig_v, orig_r = dataset.h_flip_rate, dataset.v_flip_rate, dataset.rot_rate
-    dataset.h_flip_rate = 1.0
-    dataset.v_flip_rate = 1.0
-    dataset.rot_rate = 1.0
-
-
-    cam_aug, radar_aug, target_aug = dataset.augment_sample(cam_orig, data["radar"]["points"])
-
-
-    dataset.h_flip_rate, dataset.v_flip_rate, dataset.rot_rate = orig_h, orig_v, orig_r
-
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-
-    axes[0, 0].imshow(cam_orig.permute(1, 2, 0).numpy().clip(0, 1), origin='lower')
-    axes[0, 0].set_title("Cam BEV original")
-
-    axes[0, 1].imshow(cam_aug.permute(1, 2, 0).numpy().clip(0, 1), origin='lower')
-    axes[0, 1].set_title("Cam BEV augmented")
-
-    axes[1, 0].scatter(pts_orig[:, 1].numpy(), pts_orig[:, 2].numpy(), s=2)
-    axes[1, 0].set_title("Radar points original")
-    axes[1, 0].set_aspect("equal")
-
-    pts_aug = radar_aug["points"]
-    axes[1, 1].scatter(pts_aug[:, 1].numpy(), pts_aug[:, 2].numpy(), s=2)
-    axes[1, 1].set_title("Radar points augmented")
-    axes[1, 1].set_aspect("equal")
-
-    plt.tight_layout()
-    plt.savefig("augment_check.png")
-    print("Saved augment_check.png")
 
 
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
@@ -68,48 +34,63 @@ def main(cfg: DictConfig):
     torch.set_float32_matmul_precision('high')
     
     # Load and create dataset
-    data_path = cfg.processed_data_dir
+    data_path_right = cfg.processed_data_dir_right
+    data_path_left  = cfg.processed_data_dir_left
 
     # DATASET INITIALIZATION
-    try: 
+    try:
         ms = torch.load(os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
-        img_mean, img_std, rad_mean, rad_std = (ms['img_mean'], ms['img_std'], ms['rad_mean'], ms['rad_mean'])
+        img_mean, img_std, rad_mean, rad_std = (ms['img_mean'], ms['img_std'], ms['rad_mean'], ms['rad_std'])
     except:
-        img_mean, img_std = compute_img_stats(cfg.processed_data_dir) 
-        rad_mean, rad_std = compute_radar_stats(cfg.processed_data_dir)
+        img_mean, img_std = compute_img_stats([cfg.processed_data_dir_right, cfg.processed_data_dir_left])
+        rad_mean, rad_std = compute_radar_stats([cfg.processed_data_dir_right, cfg.processed_data_dir_left])
         ms = {
-            'img_mean' : img_mean,
-            'img_std'  : img_std,
-            'rad_mean' : rad_mean,
-            'rad_std'  : rad_std,
+            'img_mean': img_mean,
+            'img_std':  img_std,
+            'rad_mean': rad_mean,
+            'rad_std':  rad_std,
         }
         torch.save(ms, os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
 
     # Re-init train with same stats
-    train_ds = BEVDataset(
-        data_path, split="train", 
+    train_ds_right = BEVDataset(
+        data_path_right, split="train", 
         img_mean=img_mean, img_std=img_std,
         rad_mean=rad_mean, rad_std=rad_std,
         augment=cfg.augment, h_flip_rate=cfg.h_flip_rate,
         v_flip_rate=cfg.v_flip_rate, rot_rate=cfg.rot_rate,
-        rot_angle=cfg.rot_angle, point_cloud_range=cfg.point_cloud_range
+        rot_angle=cfg.rot_angle, point_cloud_range=cfg.right_point_cloud_range
         )
-
-    
-    val_ds = BEVDataset(
-        data_path, split="val", 
+    val_ds_right = BEVDataset(
+        data_path_right, split="val", 
         img_mean=img_mean, img_std=img_std,
         rad_mean=rad_mean, rad_std=rad_std
         )
 
-    viz_augment(train_ds, idx=150)
+    train_ds_left = BEVDataset(
+        data_path_left, split="train", 
+        img_mean=img_mean, img_std=img_std,
+        rad_mean=rad_mean, rad_std=rad_std,
+        augment=cfg.augment, h_flip_rate=cfg.h_flip_rate,
+        v_flip_rate=cfg.v_flip_rate, rot_rate=cfg.rot_rate,
+        rot_angle=cfg.rot_angle, point_cloud_range=cfg.left_point_cloud_range
+        )
+    val_ds_left = BEVDataset(
+        data_path_left, split="val", 
+        img_mean=img_mean, img_std=img_std,
+        rad_mean=rad_mean, rad_std=rad_std
+        )
 
+    train_ds = ConcatDataset([train_ds_right, train_ds_left])
+    val_ds = ConcatDataset([val_ds_right, val_ds_left])
 
+    if cfg.viz_augment:
+        viz_augment(train_ds, idx=150)
 
     log.info(f'Number of samples: {len(train_ds)}')
 
     # Unpack meta data from the training data to be used in the adapters
-    meta = train_ds.meta
+    meta = train_ds_right.meta
 
 
     grid_size = meta['grid_size']
@@ -183,7 +164,7 @@ def main(cfg: DictConfig):
         wandb_logger = WandbLogger(
             project=cfg.wandb_project,
             entity=cfg.wandb_entity,
-            log_model=False,
+            log_model=False,    
             config=OmegaConf.to_container(cfg, resolve=True)  
         )
         hyperparams = {
@@ -255,7 +236,8 @@ def main(cfg: DictConfig):
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
         default_root_dir=cfg.model_folder,
-        log_every_n_steps=cfg.log_every_n_steps,
+        log_every_n_steps=len(train_loader),
+        # log_every_n_steps=cfg.log_every_n_steps,
         gradient_clip_val=1.0,
     )
 
@@ -264,6 +246,9 @@ def main(cfg: DictConfig):
     continue_training = cfg.continue_training
 
     os.makedirs(cfg.model_folder, exist_ok=True)
+
+    prof = cProfile.Profile()
+    prof.enable()
 
     if continue_training and os.path.exists(ckpt_path):
         log.info(f'Continue training of {cfg.best_model}')
@@ -308,9 +293,15 @@ def main(cfg: DictConfig):
         else:
             # full resume, optimizer and scheduler state restored
             model_lightning = BevMultiMAELightning.load_from_checkpoint(ckpt_path, model=model)
-            trainer.fit(model_lightning, train_loader, val_loader, ckpt_path=ckpt_path)
+
+            # trainer.fit(model_lightning, train_loader, val_loader, ckpt_path=ckpt_path)
+            trainer.fit(model_lightning, train_loader, val_loader)
     else:
         trainer.fit(model_lightning, train_loader, val_loader)
+
+
+    prof.disable()
+    prof.dump_stats("train_only.prof")
 
     model_lightning.model.eval()
     model_lightning.model.cuda()
@@ -350,8 +341,8 @@ def main(cfg: DictConfig):
 
         # cam_pred = denorm_patches(preds["cam_bev"], batch["cam_bev"], patch_size=15)
 
-        img_mean = train_ds.img_mean.cuda()
-        img_std  = train_ds.img_std.cuda()
+        img_mean = train_ds_right.img_mean.cuda()
+        img_std  = train_ds_right.img_std.cuda()
 
         cam_pred = preds["cam_bev"]
 
@@ -360,7 +351,7 @@ def main(cfg: DictConfig):
 
         cam_pred  = denorm_img(cam_pred, img_mean, img_std)
         cam_input = denorm_img(batch["cam_bev"], img_mean, img_std)
-
+    
         if cam_mask.sum() == 0:
             composite = cam_pred
         else:

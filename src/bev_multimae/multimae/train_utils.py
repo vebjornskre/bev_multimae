@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 from einops import rearrange
+from torch.utils.data import ConcatDataset
 
 from bev_multimae.datasets.data import BEVDataset, collate_radar
 
@@ -24,49 +25,41 @@ def denorm_patches(pred, target, patch_size):
 def denorm_img(img, mean, std):
     return img * (std + 1e-6) + mean
 
-def compute_img_stats(data_path):
-
-    train_ds = BEVDataset(data_path, split="train")
-    loader = DataLoader(train_ds, batch_size=8, num_workers=4, collate_fn=collate_radar)
+def compute_img_stats(data_paths):
+    ds = ConcatDataset([BEVDataset(p, split="train") for p in data_paths])
+    loader = DataLoader(ds, batch_size=8, num_workers=4, collate_fn=collate_radar)
 
     mean = 0.
     std = 0.
     n = 0
 
     for batch in loader:
-        x = batch["cam_bev"]  # [B, C, H, W]
+        x = batch["cam_bev"]
         b = x.size(0)
-        
-        x = x.view(b, x.size(1), -1)  # [B, C, HW]
-        
+        x = x.view(b, x.size(1), -1)
         mean += x.mean(2).sum(0)
         std  += x.std(2).sum(0)
         n += b
 
     mean /= n
-    std /= n
-
-    print("mean:", mean)
-    print("std:", std)
+    std  /= n
     return mean.clone().detach(), std.clone().detach()
 
-def compute_radar_stats(data_path):
-    train_ds = BEVDataset(data_path, split="train")
-    loader = DataLoader(train_ds, batch_size=8, num_workers=4, collate_fn=collate_radar)
+
+def compute_radar_stats(data_paths):
+    ds = ConcatDataset([BEVDataset(p, split="train") for p in data_paths])
+    loader = DataLoader(ds, batch_size=8, num_workers=4, collate_fn=collate_radar)
 
     mean = 0.
     std = 0.
     n = 0
 
     for batch in loader:
-        x = batch["radar"]["points"][:, 4:7].float()  # [N, 3]
+        x = batch["radar"]["points"][:, 4:7].float()
         mean += x.mean(0)
         std  += x.std(0)
         n += 1
 
     mean /= n
     std  /= n
-
-    print("radar mean:", mean)
-    print("radar std:", std)
     return mean, std

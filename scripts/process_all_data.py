@@ -15,7 +15,13 @@ log = logging.getLogger(__name__)
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
 
-    direction = 'right' # can also be left and right
+    direction = cfg.direction # can also be left and right
+    if direction == 'left':
+        OmegaConf.update(cfg, "point_cloud_range", [1.5, -21, -5, 28.5, 6, 20])
+        OmegaConf.update(cfg, "processed_data_dir", "data/processed/left")
+
+    if direction == 'right':
+        OmegaConf.update(cfg, "point_cloud_range", [1.5, -6, -5, 28.5, 21, 20])
 
     prof = cProfile.Profile()
 

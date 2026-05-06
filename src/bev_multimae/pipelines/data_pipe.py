@@ -18,7 +18,6 @@ from bev_multimae.preprocessing.lidar.lidar_process_utils import lidar_to_ego
 from bev_multimae.visualization.BEV_visualization import plot_bev_target
 
 
-from bev_multimae.preprocessing.get_transforms import T_rad_to_ego, T_cam_to_ego, T_rad_to_cam, T_lid_to_cam, T_lid_to_ego
 log = logging.getLogger(__name__)
 
 
@@ -55,7 +54,8 @@ class BEVPipeline:
         ]
 
     def process(self, frame: dict) -> dict:
-        self.T_cam_ego, self.T_rad_ego, self.T_rad_cam, self.T_lid_cam, self.T_lid_ego = get_all_tfs(self.cfg, right=True)
+        right_bool = (self.cfg.direction == 'right')
+        self.T_cam_ego, self.T_rad_ego, self.T_rad_cam, self.T_lid_cam, self.T_lid_ego = get_all_tfs(self.cfg, right=right_bool)
         
         img   = load_img(frame['cam'])
         radar = self._merge_radar(frame['rad'])
