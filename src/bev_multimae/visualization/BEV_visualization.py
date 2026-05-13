@@ -15,7 +15,12 @@ def _normalize_patch_size(patch_size_pixels):
         patch_h_px = patch_w_px = patch_size_pixels
     return patch_h_px, patch_w_px
 
-def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, point_cloud_range, patch_size_pixels, event, i):
+def plot_bev_comparison(
+    cfg, img, pts_radar_ego, 
+    bev_cam_hires, voxel_size, 
+    point_cloud_range, patch_size_pixels, 
+    event, i, manual_save=None
+    ):
     save_folder = os.path.join(cfg.plot_folder, "BEV")
     os.makedirs(save_folder, exist_ok=True)
 
@@ -54,7 +59,8 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
         ax.add_collection(LineCollection(v_lines + h_lines, colors=color, linewidths=lw, alpha=0.8, zorder=2))
 
     height = pts_radar_ego[:, 2]
-    valid = height > -3
+    valid = height > -6
+    # valid = height > 10
     pts_radar_ego = pts_radar_ego[valid]
 
     px_rad = pts_radar_ego[:, 0] - x_min
@@ -93,7 +99,10 @@ def plot_bev_comparison(cfg, img, pts_radar_ego, bev_cam_hires, voxel_size, poin
     ax_img.axis("off")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(save_folder, f"video/left/{event}_bev_overlay_{i}.png"), dpi=150)
+    if manual_save is None:
+        plt.savefig(os.path.join(save_folder, f"video/left/{event}_bev_overlay_{i}.png"), dpi=150)
+    else:
+        plt.savefig(os.path.join(manual_save, f"bev.png"))
     plt.close(fig_overlay)
 
 

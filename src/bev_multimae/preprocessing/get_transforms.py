@@ -115,8 +115,8 @@ def get_all_tfs(cfg, right=True):
     T_cam_ego = find_transform(transforms, "sensor_base_link", f"camera_front_{direction}_optical_frame")
     T_rad_ego = find_transform(transforms, "sensor_base_link", f"radar_front_{direction}")
     T_rad_cam = find_transform(transforms, f"camera_front_{direction}_optical_frame", f"radar_front_{direction}")
-    T_lid_cam = find_transform(transforms, f"camera_front_{direction}_optical_frame", "lidar_front_top")
-    T_lid_ego = find_transform(transforms, "sensor_base_link", "lidar_front_top")
+    T_lid_cam = find_transform(transforms, f"camera_front_{direction}_optical_frame", "lidar_front_top/laser")
+    T_lid_ego = find_transform(transforms, "sensor_base_link", "lidar_front_top/laser")
 
     return T_cam_ego, T_rad_ego, T_rad_cam, T_lid_cam, T_lid_ego
 

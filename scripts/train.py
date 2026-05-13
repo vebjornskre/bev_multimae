@@ -19,7 +19,7 @@ from bev_multimae.multimae.model_lightning import BevMultiMAELightning
 from bev_multimae.datasets.data import BEVDataset, collate_radar
 from bev_multimae.visualization.predictions import viz_preds
 from bev_multimae.visualization.viz_augment import viz_augment
-from bev_multimae.multimae.train_utils import *
+from bev_multimae.engines.train_utils import *
 
 log = logging.getLogger(__name__)
 
@@ -287,15 +287,14 @@ def main(cfg: DictConfig):
         if cfg.new_lr:
             # weights only, fresh optimizer/scheduler with cfg.lr
             model_lightning = BevMultiMAELightning.load_from_checkpoint(
-                ckpt_path, model=model, lr=cfg.lr
+                ckpt_path, model=model, lr=cfg.lr, strict=False, norm_pix=cfg.norm_pix
             )
             trainer.fit(model_lightning, train_loader, val_loader)
         else:
             # full resume, optimizer and scheduler state restored
             model_lightning = BevMultiMAELightning.load_from_checkpoint(ckpt_path, model=model)
 
-            # trainer.fit(model_lightning, train_loader, val_loader, ckpt_path=ckpt_path)
-            trainer.fit(model_lightning, train_loader, val_loader)
+            trainer.fit(model_lightning, train_loader, val_loader, ckpt_path=ckpt_path)
     else:
         trainer.fit(model_lightning, train_loader, val_loader)
 
@@ -318,7 +317,7 @@ def main(cfg: DictConfig):
 
         preds, task_masks = model_lightning.model(
             batch,
-            mask_inputs=True,   # set False if you want no masking
+            mask_inputs=True, 
             num_encoded_tokens=cfg.num_encoded_tokens
         )
 
@@ -335,21 +334,14 @@ def main(cfg: DictConfig):
 
         # composite logic
         if cam_mask.sum() == 0:
-            composite = preds["cam_bev"]  # no copying from input
+            composite = preds["cam_bev"]  
         else:
             composite = preds["cam_bev"] * cam_mask + batch["cam_bev"] * (1 - cam_mask)
-
-        # cam_pred = denorm_patches(preds["cam_bev"], batch["cam_bev"], patch_size=15)
 
         img_mean = train_ds_right.img_mean.cuda()
         img_std  = train_ds_right.img_std.cuda()
 
-        cam_pred = preds["cam_bev"]
-
-        if cfg.norm_pix:
-            cam_pred = denorm_patches(cam_pred, batch["cam_bev"], patch_size[0])
-
-        cam_pred  = denorm_img(cam_pred, img_mean, img_std)
+        cam_pred  = denorm_img(preds["cam_bev"], img_mean, img_std)
         cam_input = denorm_img(batch["cam_bev"], img_mean, img_std)
     
         if cam_mask.sum() == 0:

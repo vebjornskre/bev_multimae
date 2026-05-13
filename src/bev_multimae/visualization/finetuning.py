@@ -2,8 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import open3d as o3d
+import matplotlib.patches as patches
 
-def plot_img_and_seg(img, mask, path):
+def plot_img_and_seg(img, mask, bboxes, path):
     img = np.array(img)
     if img is None or mask is None:
         print("Missing image or mask")
@@ -19,13 +20,22 @@ def plot_img_and_seg(img, mask, path):
     axes[1].imshow(mask, cmap="gray")
     axes[1].set_title("Segmentation")
     axes[2].imshow(blended)
-    axes[2].set_title("Overlay")
+    axes[2].set_title("Overlay + bboxes")
+
+    for box in bboxes:
+        x1, y1, x2, y2 = box
+        rect = patches.Rectangle(
+            (x1, y1), x2 - x1, y2 - y1,
+            linewidth=2, edgecolor="lime", facecolor="none"
+        )
+        axes[2].add_patch(rect)
 
     for ax in axes:
         ax.axis("off")
 
     plt.tight_layout()
     plt.savefig(path)
+    plt.close()
 
 def scatter_seg_points(segs_pts, segs_colors, center_sphere, path, save_ply=True):
     fig = plt.figure(figsize=(6, 6))

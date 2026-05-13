@@ -17,7 +17,7 @@ manual_test/
 data/
 data/raw/
 data/processed/
-
+    
 # Trained models
 model_checkpoints/
 models/

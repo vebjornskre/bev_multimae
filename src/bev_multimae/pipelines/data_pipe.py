@@ -68,7 +68,7 @@ class BEVPipeline:
         cam_patches, bev_cam_splatted, bev_cam_hires, pts_cam_ego = self._process_img(img, cal_pts)
 
         return {
-            "batch_dict_rad":    batch_dict_rad,
+            "batch_dict_rad":    batch_dict_rad,    
             "bev_radar_target":  bev_target,
             "bev_cam":           cam_patches,
             "bev_cam_hires":     bev_cam_hires,

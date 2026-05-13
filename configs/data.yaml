@@ -78,7 +78,7 @@ elevation_angle: -0.2        # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"
-plotting: False
+plotting: True
 meshlab_cam: False
 
 # Depth calibration

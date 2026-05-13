@@ -10,10 +10,8 @@ class BevMultiMAELightning(pl.LightningModule):
         super().__init__()
         self.model = model
         self.lr = lr
-
-        self.cam_loss_normpix = MaskedMSELoss(patch_size=15, stride=1, norm_pix=True)
-        self.cam_loss_abs     = MaskedMSELoss(patch_size=15, stride=1, norm_pix=False)
-
+        self.cam_loss = MaskedMSELoss(patch_size=15, stride=1, norm_pix=norm_pix)
+        self.cam_l1   = MaskedL1Loss(patch_size=15, stride=1, norm_pix=norm_pix)
         self.rad_loss_l1 = MaskedL1Loss(patch_size=1, stride=1, norm_pix=False)
         self.rad_loss_mse = MaskedMSELoss(patch_size=1, stride=1, norm_pix=False)
         self.num_encoded_tokens = num_encoded_tokens
@@ -32,14 +30,14 @@ class BevMultiMAELightning(pl.LightningModule):
         preds, task_masks = self.model(batch, mask_inputs=True, num_encoded_tokens=self.num_encoded_tokens)
         loss = self.compute_loss(preds, batch, task_masks)
         batch_size = batch["cam_bev"].size(0)
-        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log("train_loss", loss, prog_bar=True, on_epoch=True, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch, batch_idx):
         preds, task_masks = self.model(batch, mask_inputs=True, num_encoded_tokens=self.num_encoded_tokens)
         loss = self.compute_loss(preds, batch, task_masks)
         batch_size = batch["cam_bev"].size(0)
-        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True, batch_size=batch_size)
         return loss
 
     def gradient_loss(self, pred, target, mask, patch_size=15):
@@ -60,55 +58,26 @@ class BevMultiMAELightning(pl.LightningModule):
 
 
     def compute_loss(self, preds, batch, task_masks):
-        target = batch["cam_bev"]
-        pred   = preds["cam_bev"]
-
-        ph, pw = 15, 15
-        B, _, H, W = target.shape
-
-        N = task_masks["cam_bev"].shape[1]
-        nh = nw = int(N ** 0.5)
-
-        mask = task_masks["cam_bev"].reshape(B, nh, nw)
-        mask = mask.repeat_interleave(ph, dim=1).repeat_interleave(pw, dim=2)
-        mask = mask.unsqueeze(1)
-
-        content_mask = (target.abs().sum(dim=1, keepdim=True) > 1e-3).float()
-        bg_mask      = 1.0 - content_mask
-
-        fg_struct_loss = self.cam_loss_normpix(pred * content_mask, target * content_mask, task_masks["cam_bev"])
-        fg_abs_loss    = self.cam_loss_abs(pred * content_mask, target * content_mask, task_masks["cam_bev"])
-        bg_loss        = self.cam_loss_abs(pred * bg_mask, target * bg_mask, task_masks["cam_bev"])
-
-        cam_loss = 3 * fg_struct_loss + 1 * fg_abs_loss + 0.5 * bg_loss
+        cam = self.cam_loss(preds["cam_bev"], batch["cam_bev"], task_masks["cam_bev"])
+        l1  = self.cam_l1(preds["cam_bev"], batch["cam_bev"], task_masks["cam_bev"])
+        # grad = self.gradient_loss(preds["cam_bev"], batch["cam_bev"], task_masks["cam_bev"])
+        camera_weight = 5
 
         rad_pred   = preds["radar"]
         rad_target = batch["radar_target"].to(rad_pred.device)
 
         occ_loss = F.binary_cross_entropy_with_logits(
-            rad_pred[:, 0:1],
-            rad_target[:, 0:1],
-            pos_weight=torch.tensor(10.0, device=rad_pred.device)
+            rad_pred[:, 0:1], rad_target[:, 0:1],
+            pos_weight=torch.tensor(10.0).to(rad_pred.device)
         )
 
-        occ_mask = (rad_target[:, 0:1] > 0.5).float()
+        occ_mask  = (rad_target[:, 0:1] > 0.5).float()
+        reg_loss_1  = self.rad_loss_l1(rad_pred[:, 1:9] * occ_mask, rad_target[:, 1:9] * occ_mask, task_masks["radar"])
+        reg_loss_2  = self.rad_loss_mse(rad_pred[:, 9:11] * occ_mask, rad_target[:, 9:11] * occ_mask, task_masks["radar"])
 
-        reg_loss_1 = self.rad_loss_l1(
-            rad_pred[:, 1:9] * occ_mask,
-            rad_target[:, 1:9] * occ_mask,
-            task_masks["radar"]
-        )
+        cam_loss  = camera_weight * (cam + 0.1 * l1)
+        rad_loss  = occ_loss + reg_loss_1 + reg_loss_2
 
-        reg_loss_2 = self.rad_loss_mse(
-            rad_pred[:, 9:11] * occ_mask,
-            rad_target[:, 9:11] * occ_mask,
-            task_masks["radar"]
-        )
-
-        rad_loss = occ_loss + reg_loss_1 + reg_loss_2
-
-        print(f'Cam loss: {cam_loss}')
-        print(f'Rad loss: {rad_loss}')
 
         return cam_loss + rad_loss
 

@@ -111,11 +111,13 @@ class Bev_MultiMAE(nn.Module):
         device = list(input_tokens.values())[0].device
 
         alphas = [alphas] * len(input_tokens) if isinstance(alphas, float) else alphas
+
         if sample_tasks_uniformly:
-            alphas = self.sample_alphas(B, len(input_tokens), alphas=alphas)
-            task_sampling_dist = Dirichlet(alphas).sample().to(device)
+            alphas = self.sample_alphas(B, len(input_tokens), alphas=alphas).to(device)
+            task_sampling_dist = Dirichlet(alphas).sample()
         else:
-            task_sampling_dist = Dirichlet(torch.Tensor(alphas)).sample((B,)).to(device)
+            alphas = torch.tensor(alphas, device=device)
+            task_sampling_dist = Dirichlet(alphas).sample((B,))
 
         samples_per_task = (task_sampling_dist * num_encoded_tokens).round().long()
 

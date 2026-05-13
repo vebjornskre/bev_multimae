@@ -23,7 +23,6 @@ def viz_preds(preds, batch, folder, radar_channel=None):
             pred = v[0].detach().cpu().permute(1, 2, 0).numpy()
             inp  = batch["radar_target"][0].cpu().permute(1, 2, 0).numpy()
 
-            # Sigmoid to collaps to occupied or not for the first channel
             pred[..., 0] = 1 / (1 + np.exp(-pred[..., 0]))
 
             C = pred.shape[-1]
@@ -59,21 +58,26 @@ def viz_preds(preds, batch, folder, radar_channel=None):
                     inp_ch  = np.where(occ_mask, inp_ch, np.nan)
                     pred_ch = np.where(occ_mask, pred_ch, np.nan)
                     plot_pred = pred_ch
-                    v_min, v_max = np.nanmin(inp_ch), np.nanmax(inp_ch)
+                    # Consistent colorbar range from input
+                    v_min = np.nanmin(inp_ch)
+                    v_max = np.nanmax(inp_ch)
 
-                fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+                fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-                axes[0].imshow(inp_ch, cmap='gray', origin='lower', vmin=v_min, vmax=v_max)
-                
+                im0 = axes[0].imshow(inp_ch, cmap='jet', origin='lower', vmin=v_min, vmax=v_max)
                 axes[0].set_title(f"Input: {title}")
-                axes[0].set_xlabel("Forward (m)")
-                axes[0].set_ylabel("Left (m)")
 
-                axes[1].imshow(plot_pred, cmap='gray', origin='lower', vmin=v_min, vmax=v_max)
+                im1 = axes[1].imshow(plot_pred if ch == 0 else pred_ch, 
+                                     cmap='jet', origin='lower', vmin=v_min, vmax=v_max)
                 axes[1].set_title(f"Prediction: {title}")
 
                 for ax in axes:
                     ax.axis('off')
+
+                # Single shared colorbar
+                fig.subplots_adjust(right=0.88)
+                cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
+                fig.colorbar(im0, cax=cbar_ax)
 
                 name = f"radar_ch{ch}.png" if radar_channel is None else f"radar_ch{radar_channel}.png"
                 plt.savefig(os.path.join(save_folder, name), bbox_inches='tight', pad_inches=0)
@@ -83,8 +87,6 @@ def viz_preds(preds, batch, folder, radar_channel=None):
             pred = v[0].detach().cpu().permute(1, 2, 0).numpy()
             inp  = batch["cam_bev"][0].cpu().permute(1, 2, 0).numpy()
 
-            # pred = minmax_per_channel(pred)
-            # inp  = minmax_per_channel(inp)
             pred = np.clip(pred, 0, 1)
             inp  = np.clip(inp, 0, 1)
 
@@ -94,8 +96,8 @@ def viz_preds(preds, batch, folder, radar_channel=None):
             axes[1].imshow(pred[..., :3], origin="lower")
             axes[1].set_title("Prediction")
 
-        for ax in axes:
-            ax.axis('off')
+            for ax in axes:
+                ax.axis('off')
 
-        plt.savefig(os.path.join(save_folder, f'{k}.png'), bbox_inches='tight', pad_inches=0)
-        plt.close()
+            plt.savefig(os.path.join(save_folder, f'{k}.png'), bbox_inches='tight', pad_inches=0)
+            plt.close()

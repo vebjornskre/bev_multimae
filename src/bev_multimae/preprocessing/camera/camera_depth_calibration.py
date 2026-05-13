@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 def project_points_to_image(sensor, pts, T, K, D=None, img_hw=None, depth_hw=None):
     H_img, W_img = img_hw
 
+    print(H_img, W_img)
+
     if sensor == "radar":
         pts_xyz = np.stack([pts["x"], pts["y"], pts["z"]], axis=-1)
     else:
@@ -33,11 +35,15 @@ def project_points_to_image(sensor, pts, T, K, D=None, img_hw=None, depth_hw=Non
     depth = pts_cam[:, 2]
     height = pts_cam[:, 1]
 
+    # valid = (
+    #     (depth > 0.5) & 
+    #     (depth < 120.0) & 
+    #     (height > -15.5) & 
+    #     (height < 2.0) &
+    #     (np.abs(lateral / depth) < 1.4)  
+    # )
+
     valid = (
-        (depth > 0.5) & 
-        (depth < 120.0) & 
-        (height > -15.5) & 
-        (height < 2.0) &
         (np.abs(lateral / depth) < 1.4)  
     )
 
@@ -110,9 +116,15 @@ def apply_calibration(depth_map: np.ndarray, alpha: float, beta: float) -> np.nd
     return calibrated
 
 
-def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, T_lid_cam, T_rad_cam, plot=False, img=None):
-    cam_info = np.load(cfg.camera_info)
-    K, D = cam_info["K"], cam_info["D"]
+def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, T_lid_cam, T_rad_cam, plot=False, img=None, cam_info=None):
+
+    try:
+        K, D = cam_info["K"], cam_info["D"]
+    except:
+        cam_info = np.load(cfg.camera_info)
+        K, D = cam_info["K"], cam_info["D"]
+
+    print(f'Distortion coeficients are: {D}')
 
     if cfg.calibration == 'lidar': T = T_lid_cam
     elif cfg.calibration == 'radar': T = T_rad_cam
@@ -186,18 +198,7 @@ def interp_depth_residuals(depth_np: np.ndarray, proj: dict, cfg, plot=False) ->
     residuals = d_lidar - d_moge_at_pts
 
     mask = np.abs(residuals) < 16.0
-    # u, v = u[mask], v[mask]
-    # residuals = residuals[mask]
 
-    # Good but slow
-    # pts_norm = np.stack([v / H, u / W], axis=1)
-    # rbf = RBFInterpolator(pts_norm, residuals, kernel='thin_plate_spline', smoothing=5)
-
-    # ug, vg = np.meshgrid(np.arange(W), np.arange(H))
-    # grid_norm = np.stack([vg.ravel() / H, ug.ravel() / W], axis=1)
-    # correction = rbf(grid_norm).reshape(H, W)
-
-    # Other methods (faster)
     pts_norm = np.stack([v / H, u / W], axis=1)
     rbf = RBFInterpolator(pts_norm, residuals, kernel='thin_plate_spline', smoothing=5)
 

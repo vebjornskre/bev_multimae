@@ -100,12 +100,11 @@ class PFNLayer(nn.Module):
             self.norm = nn.BatchNorm1d(out_channels, eps=1e-3, momentum=0.01)
         self.relu = nn.ReLU()
 
-    def forward(self, x, unq_inv):
+    def forward(self, x, unq_inv, num_pillars):
         x = self.linear(x)
         x = self.norm(x) if self.use_norm else x
         x = self.relu(x)
 
-        num_pillars = int(unq_inv.max().item()) + 1
         x_max = torch.full((num_pillars, x.shape[1]), -1e9, device=x.device)
         x_max.scatter_reduce_(0, unq_inv.unsqueeze(1).expand(-1, x.shape[1]), x, reduce="amax")
 
@@ -154,8 +153,10 @@ class PointPillarScatter(nn.Module):
 
         features = torch.cat(features, dim=-1)
 
+        num_pillars = pillar_coords.shape[0]
+
         for pfn in self.pfn_layers:
-            features = pfn(features, pillar_inv)
+            features = pfn(features, pillar_inv, num_pillars)
 
         batch_size = batch_dict["batch_size"]  # pass this in explicitly
         spatial_features = torch.zeros(
@@ -180,9 +181,10 @@ def build_bev_target(batch_dict, grid_size, num_rad_channels):
     pts = batch_dict['points']
 
     nx, ny = grid_size
+    B = int(pc[:, 0].max().item()) + 1 if pc.shape[0] > 0 else 1
+
     if pc.shape[0] == 0:
-        return torch.zeros(1, num_rad_channels, ny, nx, device=pts.device)
-    B = int(pc[:, 0].max().item()) + 1
+        return torch.zeros(B, num_rad_channels, ny, nx, device=pts.device)
 
     bev = torch.zeros(B, num_rad_channels, ny, nx, device=pts.device)
 

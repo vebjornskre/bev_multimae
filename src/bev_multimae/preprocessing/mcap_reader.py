@@ -8,24 +8,25 @@ from mcap_ros2.decoder import DecoderFactory
 from scipy.spatial.transform import Rotation
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 from hydra.utils import to_absolute_path
+from multiprocessing import Pool
 
 file_path = 'data/raw/agriRobotData.mcap'
 
 TOPICS = {
-    # "/sensing/camera/front_right/compressed_image": "camera/front_right",
-    # "/sensing/camera/front_right/camera_info":      "camera/front_right",
-    # "/sensing/radar/front_right/raw/points":        "radar/front_right",
-    # "/sensing/camera/front_left/compressed_image":  "camera/front_left",
-    # "/sensing/camera/front_left/camera_info":       "camera/front_left",
-    # "/sensing/radar/front_left/raw/points":         "radar/front_left",
-    # "/sensing/lidar/front_top/raw/points":          "lidar/front_top",
-    # "/sensing/camera/front_right/compressed_image/gt_seg/human": "seg/front_right",
-    # "/sensing/camera/front_left/compressed_image/gt_seg/human":  "seg/front_left",
+    "/sensing/camera/front_right/compressed_image":               "camera/front_right",
+    "/sensing/camera/front_right/camera_info":                    "camera/front_right",
+    "/sensing/radar/front_right/raw/points":                      "radar/front_right",
+    "/sensing/camera/front_left/compressed_image":                "camera/front_left",
+    "/sensing/camera/front_left/camera_info":                     "camera/front_left",
+    "/sensing/radar/front_left/raw/points":                       "radar/front_left",
+    "/sensing/lidar/front_top/raw/points":                        "lidar/front_top",
+    "/sensing/camera/front_right/compressed_image/gt_seg/human":  "seg/front_right",
+    "/sensing/camera/front_left/compressed_image/gt_seg/human":   "seg/front_left",
     "/sensing/camera/front_right/compressed_image/gt_bbox/human": "bbox/front_right",
-    "/sensing/camera/front_left/compressed_image/gt_bbox/human": "bbox/front_left"
+    "/sensing/camera/front_left/compressed_image/gt_bbox/human":  "bbox/front_left"
 }
 
 
@@ -128,22 +129,41 @@ def save_bboxes(ros_msg, output_dir, timestamp):
 
 def extract(cfg, input_path):
     saved_camera_info = set()
+    created_dirs = set()
     bag_name = os.path.splitext(os.path.basename(input_path))[0]
+    timestamp_log = {}  # topic -> which timestamp was used
 
     with open(input_path, "rb") as f:
         reader = make_reader(f, decoder_factories=[DecoderFactory()])
         for schema, channel, message, ros_msg in reader.iter_decoded_messages(topics=list(TOPICS.keys())):
             topic = channel.topic
-            output_dir = os.path.join(cfg.mcap_extract_path, bag_name, TOPICS[topic])
-            os.makedirs(output_dir, exist_ok=True)
-            ts = message.log_time
+            output_dir = os.path.join(cfg["mcap_extract_path"], bag_name, TOPICS[topic])
+            if output_dir not in created_dirs:
+                os.makedirs(output_dir, exist_ok=True)
+                created_dirs.add(output_dir)
+
+            if hasattr(ros_msg, "header"):
+                sensor_ts = (
+                    ros_msg.header.stamp.sec * 1_000_000_000
+                    + ros_msg.header.stamp.nanosec
+                )
+                diff_ms = abs(message.log_time - sensor_ts) / 1_000_000
+                if diff_ms < 5000:
+                    ts = sensor_ts
+                    timestamp_log[topic] = "sensor_timestamp"
+                else:
+                    ts = message.log_time
+                    timestamp_log[topic] = "log_time (sensor stamp was invalid)"
+            else:
+                ts = message.log_time
+                timestamp_log[topic] = "log_time (no header)"
 
             if "gt_bbox" in topic:
                 save_bboxes(ros_msg, output_dir, ts)
             elif "gt_seg" in topic:
                 save_seg_mask(ros_msg, output_dir, ts)
             elif "compressed_image" in topic:
-                save_image(ros_msg, output_dir, ts)
+                save_image(ros_msg, output_dir, ts) 
             elif "camera_info" in topic:
                 if topic not in saved_camera_info:
                     save_camera_info(ros_msg, output_dir)
@@ -153,18 +173,32 @@ def extract(cfg, input_path):
             elif "points" in topic:
                 save_radar_points(ros_msg, output_dir, ts)
 
+    # write timestamp info to txt file in bag root folder
+    bag_root = os.path.join(cfg["mcap_extract_path"], bag_name)
+    with open(os.path.join(bag_root, "timestamp_info.txt"), "w") as f:
+        for topic, method in sorted(timestamp_log.items()):
+            f.write(f"{topic}: {method}\n")
 @hydra.main(config_path="../../../configs", config_name="data", version_base=None)
 def main(cfg: DictConfig) -> None:
+    
     input_path = cfg.mcap_path
     if _mode == "list_topics":
         list_topics(input_path)
+
     elif _mode == "list_transforms":
         list_transforms(input_path)
+
     else:
         mcaps = [f for f in os.listdir(cfg.bags_path) if f.endswith('.mcap')]
-        for i, mcap in enumerate(mcaps):
-            extract(cfg, os.path.join(cfg.bags_path, mcap))
-            print(f'finished with bag {i}')
+        paths = [os.path.join(cfg.bags_path, mcap) for mcap in mcaps]
+        cfg_plain = OmegaConf.to_container(cfg, resolve=True)
+        n_proc = min(8, len(paths))
+        
+        args = [(cfg_plain, p) for p in paths]
+
+        with Pool(processes=n_proc) as pool:
+            for i, _ in enumerate(pool.imap_unordered(extract_one, args), start=1):
+                print(f'finished with bag {i+1}/{len(paths)}')
 
 
 if __name__ == "__main__":

@@ -141,7 +141,7 @@ class BEVDataset(Dataset):
         return cam, batch_dict, bev_target
 
 
-    def __len__(self):
+    def __len__(self):  
         return len(self.files)
 
     def __getitem__(self, idx):

@@ -4,20 +4,20 @@ batch_size: 128
 # batch_size: 264
 num_workers: 8
 prefetch_factor: 4
+# lr: 9e-4
 lr: 1e-5
-# lr: 1.6e-3
-max_epochs: 1
+max_epochs: 10
 min_epochs: 1
 # num_encoded_tokens: 100
 num_encoded_tokens: 156
 # num_encoded_tokens: 200
 weight_decay: 0.1
 warmup_steps: 1000
-drop_path_rate: 0.5
+drop_path_rate: 0.4
 drop_rate: 0.05
 attn_drop_rate: 0.0
 
-norm_pix: True
+norm_pix: False
 
 log_every_n_steps: 10
 save_top_k: 1
@@ -28,9 +28,9 @@ augment: True
 v_flip_rate: 0.5
 h_flip_rate: 0.5
 rot_rate: 0.5
-rot_angle: [-90, 90]
+rot_angle: [-180, 180]
 viz_augment: False
 
-continue_training: False
-best_model: 'best_model_epoch=48_val_loss=9.6133'
-new_lr: True
+continue_training: True
+best_model: 'best_model_epoch=07_val_loss=4.1142_best_finetuned'
+new_lr: True  

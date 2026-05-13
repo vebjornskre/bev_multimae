@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import logging
 from PIL import Image
+from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig
@@ -14,7 +15,6 @@ from bev_multimae.preprocessing.camera.camera_depth_calibration import calibrate
 from bev_multimae.finetuning.seg_cloud_ops import make_flat_bools, get_seg_point_n_colors, get_all_segs
 
 log = logging.getLogger(__name__)
-
 
 def project_2D_3D(cfg, depth, T, K, D, img_size=None):
     if isinstance(depth, torch.Tensor):
@@ -57,7 +57,26 @@ def lift(
     ) -> tuple[np.ndarray, np.ndarray]:
     """Returns lifted 3D points (N,3) and RGB colors (N,3) in ego frame."""
 
-    cam_info = np.load(cfg.camera_info)
+    cam_info = dict(np.load(cfg.camera_info))
+
+    if np.all(cam_info['D'] == 0):
+
+        event = Path(cfg.mcap_path).stem
+        event_k1 = {
+            "evt_0dyEeORn8jJHCOq2": -3.36873119e-01,
+            "evt_0dz4DPX49GHES3QR": -3.16873119e-01,
+            "evt_0e8QmDh0sX27pfVW": -3.36873119e-01,
+            "evt_0e8QmOXkpfZKY1ih": -3.36873119e-01,
+            "evt_0e8QmXqaenvFbugE": -3.36873119e-01,
+            "evt_0e8Qmgb6bdukqOwj": -2.36873119e-01,
+            "evt_0e8QmsFL0xUEIEWj": -2.36873119e-01,
+            "evt_0e8Qn5kqXWs3r28T": -2.36873119e-01,
+            "evt_0e8QnBKXiE4mtDNl": -2.76873119e-01,
+            "evt_0e8QndIYxPSnB0y9": -2.76873119e-01,
+        }
+        k1 = event_k1[event]
+        cam_info['D'] = np.array([k1, 1.29256173e-01, 1.02774231e-03, 1.23003590e-04, -2.42683235e-02])
+    
     K, D = cam_info['K'], cam_info['D']
 
     depth = de._predict(img)
@@ -78,7 +97,8 @@ def lift(
         depth_hw=depth_np.shape,
         cal_pts=cal_pts,
         plot=cfg.plotting,
-        img=img
+        img=img,
+        cam_info=cam_info
     )
 
     depth = torch.from_numpy(depth_completed)
@@ -123,4 +143,3 @@ if __name__ == '__main__':
     main()
 
 
-    # img_np[seg_mask == 1] = [1.0, 0.0, 0.0]

@@ -44,9 +44,9 @@ def load_radar(path: str = None) -> dict:
 
 def load_lidar(path: str = None) -> dict:
     pts = np.frombuffer(open(path, 'rb').read(), dtype=np.float32).reshape(-1, 3)
+
     xyz = pts[:, :3]
-    
-    
+
     valid = (
         (xyz[:, 0] > 3.0) &   # further in front
         (xyz[:, 2] > -0.5) &  # not below ground
@@ -83,7 +83,8 @@ def find_closest_idx(target_ts: int, timestamps: np.ndarray) -> int:
     if idx == len(timestamps):
         return len(timestamps) - 1
     if abs(timestamps[idx] - target_ts) < abs(timestamps[idx-1] - target_ts):
-        return idx
+        return idx 
+    # return idx
     return idx - 1
 
 def find_n_closest_idx(target_ts, timestamps, files, n=3):
@@ -100,8 +101,12 @@ def sync_frames(cfg, seg=False) -> list[dict]:
     seg_files = get_files(cfg.seg_raw_path, "*.npy")
     bbox_files = get_files(cfg.bbox_raw_path, "*.npy")
 
+    print(len(cam_files))
+
     rad_ts = np.array([int(Path(f).stem) for f in rad_files])
     lid_ts = np.array([int(Path(f).stem) for f in lid_files])
+    seg_ts = np.array([int(Path(f).stem) for f in seg_files])
+    bbox_ts = np.array([int(Path(f).stem) for f in bbox_files])
 
     seg_map = {int(Path(f).stem): f for f in seg_files}
     bbox_map = {int(Path(f).stem): f for f in bbox_files}
@@ -112,9 +117,17 @@ def sync_frames(cfg, seg=False) -> list[dict]:
 
         rad_paths = find_n_closest_idx(cam_ts, rad_ts, rad_files, n=cfg.num_radar_frames)
         lid_idx = find_closest_idx(cam_ts, lid_ts)
+        
+        seg_idx = find_closest_idx(cam_ts, seg_ts)
+        bbox_idx = find_closest_idx(cam_ts, bbox_ts)
+        seg_path = seg_files[seg_idx] if len(seg_files) > 0 else None
+        bbox_path = bbox_files[bbox_idx] if len(bbox_files) > 0 else None
 
-        seg_path = seg_map.get(cam_ts, None)
-        bbox_path = bbox_map.get(cam_ts, None)
+        time_delta_ms = abs(lid_ts[lid_idx] - cam_ts) / 1e6
+        # print(f"cam_ts: {cam_ts}, lid_ts: {lid_ts[lid_idx]}, delta: {time_delta_ms:.1f}ms")
+
+        # seg_path = seg_map.get(cam_ts, None)
+        # bbox_path = bbox_map.get(cam_ts, None)
 
         if seg and (seg_path is None or not has_seg_points(seg_path)):
             continue
