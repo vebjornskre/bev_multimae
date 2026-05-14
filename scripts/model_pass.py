@@ -70,7 +70,6 @@ def main(cfg: DictConfig):
 
     batch = next(iter(train_loader))
 
-
     # rad_out = rad_adapt(batch["radar"])
     # cam_out = cam_adapt(batch["cam_bev"])
 

@@ -21,25 +21,12 @@ from bev_multimae.visualization.BEV_visualization import overlay_radar_on_image,
 from bev_multimae.preprocessing.BEV.splat import hard_splat, patchify
 from bev_multimae.preprocessing.camera.camera_depth_calibration import project_points_to_image
 from bev_multimae.preprocessing.get_transforms import apply_transform
+from bev_multimae.preprocessing.finetuning.finetuning_utils import get_human_center, make_sphere_pts
 
 
 def _merge_radar(paths: list) -> dict:
         frames = [load_radar(p) for p in paths]
         return {k: np.concatenate([f[k] for f in frames]) for k in frames[0].keys()}
-
-def make_sphere_pts(centers, radius=0.5, n=1000, color=[0, 0, 1]):
-    print(centers)
-    centers = np.atleast_2d(centers)
-    pcd = o3d.geometry.PointCloud()
-    for center in centers:
-        pts = np.random.randn(n, 3)
-        pts = pts / np.linalg.norm(pts, axis=1, keepdims=True) * radius + center
-        colors = np.tile(color, (n, 1)).astype(np.float64)
-        sphere = o3d.geometry.PointCloud()
-        sphere.points = o3d.utility.Vector3dVector(pts)
-        sphere.colors = o3d.utility.Vector3dVector(colors)
-        pcd += sphere
-    return pcd
 
 def _compute_grid_size(voxel_size, point_cloud_range) -> list:
     pcr = point_cloud_range
@@ -49,52 +36,6 @@ def _compute_grid_size(voxel_size, point_cloud_range) -> list:
         math.ceil((pcr[5] - pcr[2]) / voxel_size[2]),  # Z → nz
     ]
 
-def get_human_center(cfg, bbox, img, lid, T_lid_cam, T_cam_ego, closest_pct=30):
-    x1, y1, x2, y2 = bbox.astype(int)
-
-    cam = np.load(cfg.camera_info)
-    H, W = np.array(img).shape[:2]
-
-    pts = apply_transform(T_lid_cam, lid)
-    z = pts[:, 2]
-
-    valid = np.isfinite(pts).all(1) & (z > 0) & (np.abs(pts[:, 0] / z) < 1.4)
-    pts = pts[valid]
-
-    uv, _ = cv2.projectPoints(
-        pts.astype(np.float64), np.zeros(3), np.zeros(3),
-        cam["K"].astype(np.float64), cam["D"]
-    )
-
-    uv = uv.reshape(-1, 2)
-    u, v = uv[:, 0], uv[:, 1]
-
-    m = (u >= 0) & (u < W - 1) & (v >= 0) & (v < H - 1)
-    pts, u, v = pts[m], u[m], v[m]
-
-    m = (u >= x1) & (u <= x2) & (v >= y1) & (v <= y2)
-    pts = pts[m]
-
-    if len(pts) == 0:
-        return None
-
-    n = max(1, int(len(pts) * closest_pct / 100))
-    pts = pts[np.argsort(pts[:, 2])[:n]]
-
-    z_median = np.median(pts[:, 2])
-
-    # back-project bbox center pixel with median depth to get 3D camera-frame point
-    K = cam["K"]
-    cx, cy = K[0, 2], K[1, 2]
-    fx, fy = K[0, 0], K[1, 1]
-    u_center = (x1 + x2) / 2
-    v_center = (y1 + y2) / 2
-    x_3d = (u_center - cx) * z_median / fx
-    y_3d = (v_center - cy) * z_median / fy
-
-    center_point = np.array([[x_3d, y_3d, z_median]])
-
-    return apply_transform(T_cam_ego, center_point)[0]
 
 @hydra.main(config_path="../../../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
@@ -106,11 +47,11 @@ def main(cfg: DictConfig):
     seg_method = False
     lid_method = not seg_method
 
-    # event = 'evt_0e8QraX8B9UIyxY9' # evening, two people to the right in the frame
-    # event = 'evt_0e8RO9yx2kWoavOD'   # afternoon, person standing still in front of robot while its driving
-    # event = 'evt_0e8RSwkcSts5kEaF'  # Two people further away
+    # event = 'evt_0e8QraX8B9UIyxY9'    # evening, two people to the right in the frame
+    # event = 'evt_0e8RO9yx2kWoavOD'    # afternoon, person standing still in front of robot while its driving
+    # event = 'evt_0e8RSwkcSts5kEaF'    # Two people further away
     # event = 'evt_0e3qa9akdU4BIHaF' 
-    event = 'evt_0e8Qmgb6bdukqOwj'  # Lacks distortion coefficients 
+    event = 'evt_0e8Qmgb6bdukqOwj'      # Lacks distortion coefficients 
     # event = 'evt_0e3rMglACswVRZ1U'    # At night one person
     # event = 'evt_0e8RSh4iCdd5BTkn'
 

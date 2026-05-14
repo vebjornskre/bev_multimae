@@ -12,7 +12,7 @@ from bev_multimae.preprocessing.camera.depth import DepthEstimator
 from bev_multimae.visualization.camera_points_viz import plot_lifted_points
 from bev_multimae.preprocessing.get_transforms import apply_transform
 from bev_multimae.preprocessing.camera.camera_depth_calibration import calibrate_depth_with_sensor
-from bev_multimae.finetuning.seg_cloud_ops import make_flat_bools, get_seg_point_n_colors, get_all_segs
+from bev_multimae.finetuning.finetuning_utils import make_flat_bools, get_seg_point_n_colors, get_all_segs
 
 log = logging.getLogger(__name__)
 

@@ -31,6 +31,10 @@ rot_rate: 0.5
 rot_angle: [-180, 180]
 viz_augment: False
 
-continue_training: True
+continue_training: False
 best_model: 'best_model_epoch=07_val_loss=4.1142_best_finetuned'
 new_lr: True  
+
+matmul_precision: high
+profile: false
+profile_path: 'profiling/train.prof'
