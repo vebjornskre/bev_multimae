@@ -178,6 +178,11 @@ def extract(cfg, input_path):
     with open(os.path.join(bag_root, "timestamp_info.txt"), "w") as f:
         for topic, method in sorted(timestamp_log.items()):
             f.write(f"{topic}: {method}\n")
+
+def extract_one(args):
+    cfg, path = args
+    extract(cfg, path)
+    
 @hydra.main(config_path="../../../configs", config_name="data", version_base=None)
 def main(cfg: DictConfig) -> None:
     

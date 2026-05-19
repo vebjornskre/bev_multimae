@@ -1,6 +1,6 @@
 # Parameters for handling data such as BEV grid dimensions etc.
 
-#####Paths
+##### Paths #####
 # Data
 mcap_extract_path: "data/raw/mcap_extract"
 
@@ -18,13 +18,14 @@ processed_data_dir: "data/processed"
 processed_data_dir_right: "data/processed/right"
 processed_data_dir_left: "data/processed/left"
 
+finetuning_data_dir: "data_finetuning/"
+
 # mcap_path: "data/raw/agriRobotData.mcap"
-mcap_path: "data/raw/bags/evt_0e8RSwkcSts5kEaF.mcap"
+mcap_path: "data/raw/bags/evt_0e8RIx3ONd0oyk3F.mcap"
 bags_path: "data/raw/bags"
 
 # Visualization paths
 finetuning_vis: 'reports/figures/finetuning'
-
 
 # Models
 depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
@@ -33,13 +34,7 @@ depth_pro_weights: "/work3/s242723/.cache/depth-pro/depth_pro.pt"
 depth_model: "moge"      # can also be metric3d, depth_any, moge
                          # depth_any_rel, depth_pro, unidepth and zoe (zoe needs upgrade of timm)
 
-# Frame for single predictions (development/visualizations)
-img_frame: 140
-radar_frame: 420
-lidar_frame: 140
-
 # BEV
-
 direction: left
 
 # # Original
@@ -78,7 +73,7 @@ elevation_angle: -0.2        # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"
-plotting: True
+plotting: False
 meshlab_cam: False
 
 # Depth calibration
@@ -92,3 +87,6 @@ num_radar_frames: 6 # 3 scans per image
 
 # Logging
 logging: False
+
+######### FINETUNING ########
+box_depth: 0.6

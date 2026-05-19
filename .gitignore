@@ -17,6 +17,7 @@ manual_test/
 data/
 data/raw/
 data/processed/
+data_finetuning/
     
 # Trained models
 model_checkpoints/

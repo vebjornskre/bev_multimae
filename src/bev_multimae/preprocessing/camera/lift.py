@@ -44,21 +44,9 @@ def project_2D_3D(cfg, depth, T, K, D, img_size=None):
 
     return torch.from_numpy(pts.reshape(H, W, 3))
 
-
-def lift(
-    cfg, img, cal_pts, 
-    de: DepthEstimator = None, 
-    T_cam_ego = None, 
-    T_lid_cam = None,
-    T_rad_cam = None,
-    plot=False,
-    seg_mask=None,
-    bboxes=None
-    ) -> tuple[np.ndarray, np.ndarray]:
-    """Returns lifted 3D points (N,3) and RGB colors (N,3) in ego frame."""
+def load_cam_info(cfg):
 
     cam_info = dict(np.load(cfg.camera_info))
-
     if np.all(cam_info['D'] == 0):
 
         event = Path(cfg.mcap_path).stem
@@ -78,6 +66,21 @@ def lift(
         cam_info['D'] = np.array([k1, 1.29256173e-01, 1.02774231e-03, 1.23003590e-04, -2.42683235e-02])
     
     K, D = cam_info['K'], cam_info['D']
+    return K, D
+
+def lift(
+    cfg, img, cal_pts, 
+    de: DepthEstimator = None, 
+    T_cam_ego = None, 
+    T_lid_cam = None,
+    T_rad_cam = None,
+    plot=False,
+    seg_mask=None,
+    bboxes=None
+    ) -> tuple[np.ndarray, np.ndarray]:
+    """Returns lifted 3D points (N,3) and RGB colors (N,3) in ego frame."""
+
+    K, D = load_cam_info(cfg)
 
     depth = de._predict(img)
 
@@ -96,9 +99,10 @@ def lift(
         img_hw=(H, W),
         depth_hw=depth_np.shape,
         cal_pts=cal_pts,
+        K=K,
+        D=D,
         plot=cfg.plotting,
         img=img,
-        cam_info=cam_info
     )
 
     depth = torch.from_numpy(depth_completed)
@@ -139,7 +143,7 @@ def lift(
 def main(cfg: DictConfig) -> None:
     print('This files shoulnd be run at this time')
 
-if __name__ == '__main__':
+if __name__ == '__main__': 
     main()
 
 

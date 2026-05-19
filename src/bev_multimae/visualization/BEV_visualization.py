@@ -26,9 +26,6 @@ def plot_bev_comparison(
 
     bev_hi_np = bev_cam_hires.permute(1, 2, 0).numpy()
 
-    print(f'bev cam hires shape: {bev_cam_hires.shape}')
-    print(f'bev cam hires numpy shape: {bev_hi_np.shape}')
-
     pcr = point_cloud_range
     x_min, y_min, x_max, y_max = pcr[0], pcr[1], pcr[3], pcr[4]
     x_range = x_max - x_min
@@ -172,7 +169,6 @@ def plot_bev_target(cfg, bev, name="bev_target"):
 
     bev = bev[0].detach().cpu().numpy()
     C = bev.shape[0]
-    print(f'radar bev shape: {bev.shape}')
 
     titles = [
         "Occupancy",
