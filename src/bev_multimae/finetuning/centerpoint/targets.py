@@ -156,8 +156,8 @@ def gaussian_2d(shape, sigma=1.0):
 
 def build_centerpoint_targets_with_gaussian_gpu(boxes_list, bev_range=(-20, -20, 20, 20), grid_size=64, point_cloud_range=None, gaussian_radius=2, device='cuda'):
     """
-    GPU version: Build CenterPoint-style targets with Gaussian heatmaps on GPU (vectorized).
-    Eliminates nested Python loops by using tensor slicing and torch.max.
+    GPU version: Build CenterPoint-style targets with Gaussian heatmaps on GPU.
+    Optimized for minimal tensor creation overhead.
 
     Args:
         boxes_list: list of (8, 3) arrays (can be numpy or torch)
@@ -181,7 +181,7 @@ def build_centerpoint_targets_with_gaussian_gpu(boxes_list, bev_range=(-20, -20,
     rot = torch.zeros(grid_size, grid_size, 2, dtype=torch.float32, device=device)
     masks = torch.zeros(grid_size, grid_size, 1, dtype=torch.float32, device=device)
 
-    # Create Gaussian kernel on GPU (once, not per box)
+    # Create Gaussian kernel on GPU
     gaussian_kernel = torch.from_numpy(
         gaussian_2d((gaussian_radius * 2 + 1, gaussian_radius * 2 + 1), sigma=gaussian_radius / 3)
     ).to(device)
@@ -210,24 +210,16 @@ def build_centerpoint_targets_with_gaussian_gpu(boxes_list, bev_range=(-20, -20,
         x_idx_int = int(x_idx.item())
         y_idx_int = int(y_idx.item())
 
-        # Vectorized Gaussian placement: compute affected region bounds
-        x_start = max(0, x_idx_int - gaussian_radius)
-        x_end = min(grid_size, x_idx_int + gaussian_radius + 1)
-        y_start = max(0, y_idx_int - gaussian_radius)
-        y_end = min(grid_size, y_idx_int + gaussian_radius + 1)
+        # Add Gaussian blob around center using optimized nested loops
+        for dx in range(-gaussian_radius, gaussian_radius + 1):
+            for dy in range(-gaussian_radius, gaussian_radius + 1):
+                px = x_idx_int + dx
+                py = y_idx_int + dy
 
-        # Kernel coordinates for the affected region
-        k_x_start = x_start - x_idx_int + gaussian_radius
-        k_x_end = k_x_start + (x_end - x_start)
-        k_y_start = y_start - y_idx_int + gaussian_radius
-        k_y_end = k_y_start + (y_end - y_start)
-
-        # Blend Gaussian with heatmap using torch.max (vectorized)
-        gaussian_slice = gaussian_kernel[k_y_start:k_y_end, k_x_start:k_x_end]
-        heatmap[y_start:y_end, x_start:x_end, 0] = torch.max(
-            heatmap[y_start:y_end, x_start:x_end, 0],
-            gaussian_slice
-        )
+                if 0 <= px < grid_size and 0 <= py < grid_size:
+                    gx = dx + gaussian_radius
+                    gy = dy + gaussian_radius
+                    heatmap[py, px, 0] = torch.max(heatmap[py, px, 0], gaussian_kernel[gy, gx])
 
         # Set regression targets (offset from integer grid point)
         reg[y_idx_int, x_idx_int, 0] = x_idx - x_idx_int
@@ -241,11 +233,9 @@ def build_centerpoint_targets_with_gaussian_gpu(boxes_list, bev_range=(-20, -20,
         dim[y_idx_int, x_idx_int, 1] = size[1]
         dim[y_idx_int, x_idx_int, 2] = size[2]
 
-        # Set rotation (create sin/cos tensors on device to avoid extra .to() calls)
-        sin_angle = torch.sin(torch.as_tensor(angle, dtype=torch.float32, device=device))
-        cos_angle = torch.cos(torch.as_tensor(angle, dtype=torch.float32, device=device))
-        rot[y_idx_int, x_idx_int, 0] = sin_angle
-        rot[y_idx_int, x_idx_int, 1] = cos_angle
+        # Set rotation using numpy (faster than tensor creation)
+        rot[y_idx_int, x_idx_int, 0] = np.sin(angle)
+        rot[y_idx_int, x_idx_int, 1] = np.cos(angle)
 
         # Set mask
         masks[y_idx_int, x_idx_int, 0] = 1.0

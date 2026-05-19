@@ -276,7 +276,8 @@ def run_finetune(cfg: DictConfig):
         callbacks=[checkpoint_callback],
         default_root_dir=cfg.model_folder,
         log_every_n_steps=len(train_loader),
-        gradient_clip_val=1.0
+        gradient_clip_val=1.0,
+        enable_progress_bar=False
     )
 
     os.makedirs(cfg.model_folder, exist_ok=True)

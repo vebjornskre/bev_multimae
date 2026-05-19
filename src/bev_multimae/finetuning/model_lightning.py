@@ -58,8 +58,7 @@ class CenterPointLightning(pl.LightningModule):
         total_loss = loss_dict["total_loss"]
 
         batch_size = batch["cam_bev"].size(0)
-        # Only log total loss to avoid .item() overhead on every metric
-        self.log("train/total_loss", total_loss, prog_bar=True, batch_size=batch_size)
+        self.log("train/total_loss", total_loss, batch_size=batch_size)
 
         return total_loss
 
@@ -75,8 +74,7 @@ class CenterPointLightning(pl.LightningModule):
         total_loss = loss_dict["total_loss"]
 
         batch_size = batch["cam_bev"].size(0)
-        # Only log total loss to avoid .item() overhead on every metric
-        self.log("val/total_loss", total_loss, prog_bar=True, batch_size=batch_size)
+        self.log("val/total_loss", total_loss, batch_size=batch_size)
 
         return total_loss
 
