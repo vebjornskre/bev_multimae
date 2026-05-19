@@ -6,6 +6,7 @@ import random
 from bev_multimae.preprocessing.BEV.dynamic_pillar_vfe import DynamicPillarizer, build_bev_target
 import torchvision
 import math
+import numpy as np
 
 class BEVFineData(Dataset):
     def __init__(
@@ -39,6 +40,10 @@ class BEVFineData(Dataset):
         }
 
         self.samples = []
+
+        # Cache pretrain files to avoid repeated glob/sort calls
+        pretrain_files_cache = {}
+
         for label_file in sorted(label_root.rglob("*.npz")):
             event     = label_file.parent.name
             frame_idx = int(label_file.stem)
@@ -50,7 +55,14 @@ class BEVFineData(Dataset):
             if not pretrain_dir.exists():
                 continue
 
-            pretrain_files = sorted(pretrain_dir.glob("*.pt"), key=lambda p: int(p.stem.split("_")[-1]))
+            # Use cached pretrain files or build cache
+            if event not in pretrain_files_cache:
+                pretrain_files_cache[event] = sorted(
+                    pretrain_dir.glob("*.pt"),
+                    key=lambda p: int(p.stem.split("_")[-1])
+                )
+
+            pretrain_files = pretrain_files_cache[event]
 
             if frame_idx >= len(pretrain_files):
                 continue
