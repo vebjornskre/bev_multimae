@@ -29,8 +29,8 @@ log = logging.getLogger(__name__)
 
 
 def collate_finetune(batch):
-    """Collate function for finetuning that adds detection targets."""
-    # Collate radar using pillar format (handled by collate_radar logic)
+    """Collate function for finetuning - keeps boxes, targets built on GPU."""
+    # Collate radar using pillar format
     radar_list = [item['radar'] for item in batch]
     radar_batch = {}
 
@@ -64,38 +64,13 @@ def collate_finetune(batch):
     # Stack camera images
     cam_bev = torch.stack([item['cam_bev'] for item in batch])
 
-    # Build detection targets for each sample in batch
+    # Keep boxes as-is (will build targets on GPU in training_step)
     boxes_list = [item['boxes'] for item in batch]
-    detection_targets_list = []
-    for boxes in boxes_list:
-        # Convert list of (8,3) boxes to detection targets
-        targets = build_centerpoint_targets_with_gaussian(
-            boxes,
-            bev_range=(-20, -20, 20, 20),
-            grid_size=64,  # After downsampling in CenterPointHead
-            gaussian_radius=2
-        )
-        # Transpose to (C, H, W) format for batch stacking
-        targets_transposed = {}
-        for key in targets:
-            # Targets are (H, W, C), transpose to (C, H, W)
-            if targets[key].dim() == 3:
-                targets_transposed[key] = targets[key].permute(2, 0, 1).unsqueeze(0)
-            else:
-                targets_transposed[key] = targets[key].unsqueeze(0)
-        detection_targets_list.append(targets_transposed)
-
-    # Stack detection targets
-    detection_targets = {}
-    for key in detection_targets_list[0].keys():
-        detection_targets[key] = torch.cat(
-            [t[key] for t in detection_targets_list], dim=0
-        )
 
     return {
         'cam_bev': cam_bev,
         'radar': radar_batch,
-        'detection_targets': detection_targets,
+        'boxes': boxes_list,
     }
 
 
@@ -302,7 +277,7 @@ def run_finetune(cfg: DictConfig):
         callbacks=[checkpoint_callback],
         default_root_dir=cfg.model_folder,
         log_every_n_steps=len(train_loader),
-        gradient_clip_val=1.0,
+        gradient_clip_val=1.0
     )
 
     os.makedirs(cfg.model_folder, exist_ok=True)

@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from bev_multimae.finetuning.centerpoint.losses import CenterPointLoss
+from bev_multimae.finetuning.centerpoint.targets import build_centerpoint_targets_with_gaussian_gpu
 
 
 class CenterPointLightning(pl.LightningModule):
@@ -47,7 +48,10 @@ class CenterPointLightning(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         detections = self(batch)
-        targets = batch["detection_targets"]
+
+        # Build targets on GPU
+        boxes_list = batch["boxes"]
+        targets = self._build_targets_batch(boxes_list, detections[0].device)
 
         loss_dict = self.loss_fn(detections, targets)
         total_loss = loss_dict["total_loss"]
@@ -64,7 +68,10 @@ class CenterPointLightning(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         detections = self(batch)
-        targets = batch["detection_targets"]
+
+        # Build targets on GPU
+        boxes_list = batch["boxes"]
+        targets = self._build_targets_batch(boxes_list, detections[0].device)
 
         loss_dict = self.loss_fn(detections, targets)
         total_loss = loss_dict["total_loss"]
@@ -78,6 +85,35 @@ class CenterPointLightning(pl.LightningModule):
         self.log("val/rot_loss", loss_dict["rot_loss"], batch_size=batch_size)
 
         return total_loss
+
+    def _build_targets_batch(self, boxes_list, device):
+        """Build detection targets on GPU for a batch."""
+        detection_targets_list = []
+        for boxes in boxes_list:
+            # Build targets on GPU
+            targets = build_centerpoint_targets_with_gaussian_gpu(
+                boxes,
+                bev_range=(-20, -20, 20, 20),
+                grid_size=64,
+                gaussian_radius=2,
+                device=device
+            )
+            # Transpose to (C, H, W) format for batch stacking
+            targets_transposed = {}
+            for key in targets:
+                if targets[key].dim() == 3:
+                    targets_transposed[key] = targets[key].permute(2, 0, 1).unsqueeze(0)
+                else:
+                    targets_transposed[key] = targets[key].unsqueeze(0)
+            detection_targets_list.append(targets_transposed)
+
+        # Stack detection targets
+        detection_targets = {}
+        for key in detection_targets_list[0].keys():
+            detection_targets[key] = torch.cat(
+                [t[key] for t in detection_targets_list], dim=0
+            )
+        return detection_targets
 
     def configure_optimizers(self):
         decay, no_decay = [], []

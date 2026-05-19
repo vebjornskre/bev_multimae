@@ -154,7 +154,103 @@ def gaussian_2d(shape, sigma=1.0):
     return Z / Z.max()
 
 
-def build_centerpoint_targets_with_gaussian(boxes_list, bev_range=(-20, -20, 20, 20), grid_size=128, point_cloud_range=None, gaussian_radius=2):
+def build_centerpoint_targets_with_gaussian_gpu(boxes_list, bev_range=(-20, -20, 20, 20), grid_size=64, point_cloud_range=None, gaussian_radius=2, device='cuda'):
+    """
+    GPU version: Build CenterPoint-style targets with Gaussian heatmaps on GPU.
+    Much faster than CPU version.
+
+    Args:
+        boxes_list: list of (8, 3) arrays (can be numpy or torch)
+        bev_range: (x_min, y_min, x_max, y_max) in world coordinates
+        grid_size: output grid size (64x64)
+        device: 'cuda' or 'cpu'
+
+    Returns:
+        targets dict with all tensors on specified device
+    """
+    if point_cloud_range is None:
+        x_min, y_min, x_max, y_max = bev_range
+    else:
+        x_min, y_min, _, x_max, y_max, _ = point_cloud_range
+
+    # Initialize target tensors on GPU
+    heatmap = torch.zeros(grid_size, grid_size, 1, dtype=torch.float32, device=device)
+    reg = torch.zeros(grid_size, grid_size, 2, dtype=torch.float32, device=device)
+    height = torch.zeros(grid_size, grid_size, 1, dtype=torch.float32, device=device)
+    dim = torch.zeros(grid_size, grid_size, 3, dtype=torch.float32, device=device)
+    rot = torch.zeros(grid_size, grid_size, 2, dtype=torch.float32, device=device)
+    masks = torch.zeros(grid_size, grid_size, 1, dtype=torch.float32, device=device)
+
+    # Create Gaussian kernel on GPU
+    gaussian_kernel = torch.from_numpy(
+        gaussian_2d((gaussian_radius * 2 + 1, gaussian_radius * 2 + 1), sigma=gaussian_radius / 3)
+    ).to(device)
+
+    # Process each box
+    for box in boxes_list:
+        if box is None:
+            continue
+
+        center_dict = corners_to_center_format(box)
+        if center_dict is None:
+            continue
+
+        center = torch.tensor(center_dict['center'], dtype=torch.float32, device=device)
+        size = torch.tensor(center_dict['size'], dtype=torch.float32, device=device)
+        angle = center_dict['angle']
+
+        # Project center to grid coordinates
+        x_idx = (center[0] - x_min) / (x_max - x_min) * grid_size
+        y_idx = (center[1] - y_min) / (y_max - y_min) * grid_size
+
+        # Skip if out of bounds
+        if x_idx < 0 or x_idx >= grid_size or y_idx < 0 or y_idx >= grid_size:
+            continue
+
+        x_idx_int = int(x_idx.item())
+        y_idx_int = int(y_idx.item())
+
+        # Add Gaussian blob around center
+        for dx in range(-gaussian_radius, gaussian_radius + 1):
+            for dy in range(-gaussian_radius, gaussian_radius + 1):
+                px = x_idx_int + dx
+                py = y_idx_int + dy
+
+                if 0 <= px < grid_size and 0 <= py < grid_size:
+                    gx = dx + gaussian_radius
+                    gy = dy + gaussian_radius
+                    heatmap[py, px, 0] = torch.max(heatmap[py, px, 0], gaussian_kernel[gy, gx])
+
+        # Set regression targets (offset from integer grid point)
+        reg[y_idx_int, x_idx_int, 0] = x_idx - x_idx_int
+        reg[y_idx_int, x_idx_int, 1] = y_idx - y_idx_int
+
+        # Set height
+        height[y_idx_int, x_idx_int, 0] = center[2]
+
+        # Set dimensions
+        dim[y_idx_int, x_idx_int, 0] = size[0]
+        dim[y_idx_int, x_idx_int, 1] = size[1]
+        dim[y_idx_int, x_idx_int, 2] = size[2]
+
+        # Set rotation
+        rot[y_idx_int, x_idx_int, 0] = torch.tensor(np.sin(angle), dtype=torch.float32, device=device)
+        rot[y_idx_int, x_idx_int, 1] = torch.tensor(np.cos(angle), dtype=torch.float32, device=device)
+
+        # Set mask
+        masks[y_idx_int, x_idx_int, 0] = 1.0
+
+    return {
+        'heatmap': heatmap,
+        'reg': reg,
+        'height': height,
+        'dim': dim,
+        'rot': rot,
+        'masks': masks,
+    }
+
+
+
     """
     Build CenterPoint-style targets with Gaussian heatmaps (more standard for CenterPoint).
 
