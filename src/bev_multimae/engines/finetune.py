@@ -20,30 +20,120 @@ from bev_multimae.finetuning.centerpoint import (
     CenterPointHead,
     CenterPointDetector,
 )
-from bev_multimae.datasets.data import BEVDataset, collate_radar
+from bev_multimae.datasets.data import collate_radar
+from bev_multimae.datasets.finetuning_data import BEVFineData
+from bev_multimae.finetuning.centerpoint import build_centerpoint_targets_with_gaussian
+import numpy as np
 
 log = logging.getLogger(__name__)
+
+
+def collate_finetune(batch):
+    """Collate function for finetuning that adds detection targets."""
+    # Collate base data
+    cam_bev_list = [item['cam_bev'] for item in batch]
+    radar_list = [item['radar'] for item in batch]
+    boxes_list = [item['boxes'] for item in batch]
+
+    # Stack camera images
+    cam_bev = torch.stack(cam_bev_list)
+
+    # Collate radar (handle dict structure)
+    radar_dict = {}
+    for key in radar_list[0].keys():
+        if isinstance(radar_list[0][key], torch.Tensor):
+            radar_dict[key] = torch.stack([r[key] for r in radar_list])
+        elif isinstance(radar_list[0][key], int):
+            radar_dict[key] = radar_list[0][key]
+        else:
+            radar_dict[key] = [r[key] for r in radar_list]
+
+    # Build detection targets for each sample in batch
+    detection_targets_list = []
+    for boxes in boxes_list:
+        # Convert list of (8,3) boxes to detection targets
+        # boxes: list of np.ndarray or None entries
+        targets = build_centerpoint_targets_with_gaussian(
+            boxes,
+            bev_range=(-20, -20, 20, 20),
+            grid_size=64,  # After downsampling in CenterPointHead
+            gaussian_radius=2
+        )
+        # Convert to batch format (add batch dim)
+        for key in targets:
+            targets[key] = targets[key].unsqueeze(0)  # (1, H, W, C) -> (H, W, C)
+        detection_targets_list.append(targets)
+
+    # Stack detection targets
+    detection_targets = {}
+    for key in detection_targets_list[0].keys():
+        detection_targets[key] = torch.cat(
+            [t[key] for t in detection_targets_list], dim=0
+        )
+
+    return {
+        'cam_bev': cam_bev,
+        'radar': radar_dict,
+        'detection_targets': detection_targets,
+    }
 
 
 def run_finetune(cfg: DictConfig):
 
     # Load and create dataset
-    data_path_right = cfg.processed_data_dir_right
-    data_path_left = cfg.processed_data_dir_left
+    pretrain_path_right = cfg.processed_data_dir_right
+    pretrain_path_left = cfg.processed_data_dir_left
+    finetune_path = cfg.finetuning_data_dir
+
+    # Load normalization stats from pretraining
+    try:
+        ms = torch.load(os.path.join(cfg.processed_data_dir, 'mean_std.pt'))
+        img_mean, img_std = ms['img_mean'], ms['img_std']
+    except:
+        img_mean, img_std = None, None
+        log.warning('Could not load normalization stats, using None')
 
     # DATASET INITIALIZATION
-    train_ds_right = BEVDataset(
-        data_path_right, split="train", augment=False
+    train_ds_right = BEVFineData(
+        pretrain_path=pretrain_path_right,
+        finetune_path=finetune_path,
+        direction="right",
+        split="train",
+        img_mean=img_mean,
+        img_std=img_std,
+        point_cloud_range=cfg.right_point_cloud_range,
+        augment=cfg.augment,
     )
-    val_ds_right = BEVDataset(
-        data_path_right, split="val", augment=False
+    val_ds_right = BEVFineData(
+        pretrain_path=pretrain_path_right,
+        finetune_path=finetune_path,
+        direction="right",
+        split="val",
+        img_mean=img_mean,
+        img_std=img_std,
+        point_cloud_range=cfg.right_point_cloud_range,
+        augment=False,
     )
 
-    train_ds_left = BEVDataset(
-        data_path_left, split="train", augment=False
+    train_ds_left = BEVFineData(
+        pretrain_path=pretrain_path_left,
+        finetune_path=finetune_path,
+        direction="left",
+        split="train",
+        img_mean=img_mean,
+        img_std=img_std,
+        point_cloud_range=cfg.left_point_cloud_range,
+        augment=cfg.augment,
     )
-    val_ds_left = BEVDataset(
-        data_path_left, split="val", augment=False
+    val_ds_left = BEVFineData(
+        pretrain_path=pretrain_path_left,
+        finetune_path=finetune_path,
+        direction="left",
+        split="val",
+        img_mean=img_mean,
+        img_std=img_std,
+        point_cloud_range=cfg.left_point_cloud_range,
+        augment=False,
     )
 
     train_ds = ConcatDataset([train_ds_right, train_ds_left])
@@ -153,7 +243,7 @@ def run_finetune(cfg: DictConfig):
         num_workers=cfg.num_workers,
         pin_memory=True,
         persistent_workers=True if cfg.num_workers > 0 else False,
-        collate_fn=collate_radar,
+        collate_fn=collate_finetune,
         shuffle=True
     )
 
@@ -163,7 +253,7 @@ def run_finetune(cfg: DictConfig):
         num_workers=cfg.num_workers,
         pin_memory=True,
         persistent_workers=True if cfg.num_workers > 0 else False,
-        collate_fn=collate_radar,
+        collate_fn=collate_finetune,
         shuffle=False
     )
 
