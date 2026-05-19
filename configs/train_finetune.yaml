@@ -1,0 +1,50 @@
+# Finetuning-specific training config
+
+batch_size: 64
+num_workers: 4
+prefetch_factor: 2
+pin_memory: true
+persistent_workers: true
+
+lr: 1e-4
+weight_decay: 0.01
+optimizer: adamw
+
+max_epochs: 1
+min_epochs: 1
+warmup_steps: 500
+gradient_clip_val: 1.0
+
+pretrained_checkpoint: "best_model_epoch=07_val_loss=4.1142.ckpt"
+freeze_encoder: false
+load_pretrained_encoder: true
+
+centerpoint_channels: 128
+include_global_token: false
+
+heatmap_weight: 1.0
+offset_weight: 1.0
+height_weight: 0.1
+dim_weight: 1.0
+rot_weight: 1.0
+
+augment: true
+v_flip_rate: 0.5
+h_flip_rate: 0.5
+rot_rate: 0.2
+rot_angle: [-20, 20]
+viz_augment: false
+
+drop_path_rate: 0.4
+drop_rate: 0.05
+attn_drop_rate: 0.0
+num_encoded_tokens: 156
+
+save_top_k: 1
+continue_training: false
+best_model: ""
+new_lr: true
+
+matmul_precision: high
+profile: false
+profile_path: "profiling/finetune.prof"

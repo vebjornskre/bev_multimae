@@ -51,18 +51,15 @@ class CenterPointLightning(pl.LightningModule):
 
         # Build targets on GPU
         boxes_list = batch["boxes"]
-        targets = self._build_targets_batch(boxes_list, detections[0].device)
+        device = batch["cam_bev"].device
+        targets = self._build_targets_batch(boxes_list, device)
 
         loss_dict = self.loss_fn(detections, targets)
         total_loss = loss_dict["total_loss"]
 
         batch_size = batch["cam_bev"].size(0)
+        # Only log total loss to avoid .item() overhead on every metric
         self.log("train/total_loss", total_loss, prog_bar=True, batch_size=batch_size)
-        self.log("train/heatmap_loss", loss_dict["heatmap_loss"], batch_size=batch_size)
-        self.log("train/reg_loss", loss_dict["reg_loss"], batch_size=batch_size)
-        self.log("train/height_loss", loss_dict["height_loss"], batch_size=batch_size)
-        self.log("train/dim_loss", loss_dict["dim_loss"], batch_size=batch_size)
-        self.log("train/rot_loss", loss_dict["rot_loss"], batch_size=batch_size)
 
         return total_loss
 
@@ -71,18 +68,15 @@ class CenterPointLightning(pl.LightningModule):
 
         # Build targets on GPU
         boxes_list = batch["boxes"]
-        targets = self._build_targets_batch(boxes_list, detections[0].device)
+        device = batch["cam_bev"].device
+        targets = self._build_targets_batch(boxes_list, device)
 
         loss_dict = self.loss_fn(detections, targets)
         total_loss = loss_dict["total_loss"]
 
         batch_size = batch["cam_bev"].size(0)
+        # Only log total loss to avoid .item() overhead on every metric
         self.log("val/total_loss", total_loss, prog_bar=True, batch_size=batch_size)
-        self.log("val/heatmap_loss", loss_dict["heatmap_loss"], batch_size=batch_size)
-        self.log("val/reg_loss", loss_dict["reg_loss"], batch_size=batch_size)
-        self.log("val/height_loss", loss_dict["height_loss"], batch_size=batch_size)
-        self.log("val/dim_loss", loss_dict["dim_loss"], batch_size=batch_size)
-        self.log("val/rot_loss", loss_dict["rot_loss"], batch_size=batch_size)
 
         return total_loss
 

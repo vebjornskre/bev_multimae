@@ -30,7 +30,7 @@ class Bev_MultiMAE(nn.Module):
         assert dim_tokens % num_heads == 0, 'Embed dimension must be divisible my number of heads'
     
         self.input_adapters = nn.ModuleDict(input_adapters)
-        self.output_adapters = nn.ModuleDict(output_adapters)
+        self.output_adapters = nn.ModuleDict(output_adapters) if output_adapters is not None else None
 
         self.num_global_tokens = num_global_tokens
         self.global_tokens = nn.Parameter(torch.zeros(1, num_global_tokens, dim_tokens))

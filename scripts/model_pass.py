@@ -1,25 +1,19 @@
 import os
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
-import logging
-from functools import partial
-
-# Hydra
 import hydra
 from omegaconf import DictConfig
+import matplotlib.pyplot as plt
 
-# local
 from bev_multimae.multimae.adapters.rad_adapt import RadarAdapter
 from bev_multimae.multimae.adapters.cam_adapt import CameraAdapter
 from bev_multimae.multimae.decoders.recon_decoder import SpatialOutputAdapter
-
 from bev_multimae.multimae.model import Bev_MultiMAE
 from bev_multimae.datasets.data import BEVDataset, collate_radar
 
-import matplotlib.pyplot as plt
 
 def save_preds(preds, folder):
+    os.makedirs(folder, exist_ok=True)
 
     for k, v in preds.items():
         x = v[0].detach().cpu()
@@ -31,89 +25,117 @@ def save_preds(preds, folder):
         x = (x - x.min()) / (x.max() - x.min() + 1e-6)
 
         plt.figure()
-
         if k == "radar":
-            plt.imshow(x[..., 0], cmap='gray')
+            plt.imshow(x[..., 0], cmap="gray")
         else:
             plt.imshow(x[..., :3])
 
-        plt.axis('off')
-        plt.savefig(f"{folder}/{k}.png", bbox_inches='tight', pad_inches=0)
+        plt.axis("off")
+        plt.savefig(os.path.join(folder, f"{k}.png"), bbox_inches="tight", pad_inches=0)
         plt.close()
+
 
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    data_path = cfg.processed_data_dir
-    train_dataset = BEVDataset(data_path, cfg)
-    meta = train_dataset.meta
+    ds = BEVDataset(
+        cfg.processed_data_dir_right,
+        split="train",
+        augment=False,
+    )
 
-    grid_size = meta['grid_size']
-    grid_size_hires = meta['hi_res_grid_size']
+    meta = ds.meta
 
-    H_cam, W_cam = grid_size_hires[:2]
-    patch_h = H_cam // grid_size[0]
-    patch_w = W_cam // grid_size[1]
-    patch_size = (patch_h, patch_w)
+    grid_size = meta["grid_size"]
+    grid_size_hires = meta["hi_res_grid_size"]
 
-    num_point_features = meta['num_point_features']
-    num_vfe_features = cfg.num_vfe_features
+    nx, ny = grid_size[:2]
+    nx_hi, ny_hi = grid_size_hires[:2]
 
-    dim_tokens = cfg.dim_tokens # embed_dim
+    H_cam, W_cam = ny_hi, nx_hi
+    patch_size = (H_cam // ny, W_cam // nx)
 
-    rad_adapt = RadarAdapter(dim_tokens, grid_size, num_point_features, num_vfe_features)
-    cam_adapt = CameraAdapter(dim_tokens, cfg.cam_channels, patch_size, grid_size_hires)
-
-    # training parameters
-    batch_size = cfg.batch_size 
-
-    train_loader = DataLoader(train_dataset, batch_size, collate_fn=collate_radar)
-
-    batch = next(iter(train_loader))
-
-    # rad_out = rad_adapt(batch["radar"])
-    # cam_out = cam_adapt(batch["cam_bev"])
+    dim_tokens = cfg.dim_tokens
 
     input_adapters = {
-        'radar' : rad_adapt,
-        'cam_bev'   : cam_adapt
+        "radar": RadarAdapter(
+            dim_tokens,
+            grid_size,
+            meta["num_point_features"],
+            cfg.num_vfe_features,
+        ),
+        "cam_bev": CameraAdapter(
+            dim_tokens,
+            cfg.cam_channels,
+            patch_size,
+            grid_size_hires,
+        ),
     }
-
-    cam_decode = SpatialOutputAdapter(
-        num_channels=meta['num_cam_channels'],
-        stride_level=1,          # reconstructing at full hires resolution
-        patch_size_full=patch_size,
-        image_size=grid_size_hires,
-        task='cam_bev',
-        context_tasks=['cam_bev', 'radar'],
-        dim_tokens_enc=dim_tokens
-    )
-    rad_decode = SpatialOutputAdapter(
-        num_channels=meta['num_rad_channels'],
-        stride_level=1,
-        patch_size_full=(1, 1),  # each token is already one grid cell
-        image_size=grid_size,
-        task='radar',
-        context_tasks=['cam_bev', 'radar'],
-        dim_tokens_enc=dim_tokens
-    )
 
     output_adapters = {
-        'cam_bev': cam_decode,
-        'radar': rad_decode,
+        "cam_bev": SpatialOutputAdapter(
+            num_channels=cfg.cam_channels,
+            stride_level=1,
+            patch_size_full=patch_size,
+            image_size=(grid_size_hires[1], grid_size_hires[0]),
+            task="cam_bev",
+            context_tasks=["cam_bev", "radar"],
+            dim_tokens=dim_tokens,
+            dim_tokens_enc=dim_tokens,
+        ),
+        "radar": SpatialOutputAdapter(
+            num_channels=cfg.rad_channels,
+            stride_level=1,
+            patch_size_full=(1, 1),
+            image_size=(grid_size[1], grid_size[0]),
+            task="radar",
+            context_tasks=["cam_bev", "radar"],
+            dim_tokens_enc=dim_tokens,
+        ),
     }
+
+    loader = DataLoader(
+        ds,
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=collate_radar,
+    )
 
     model = Bev_MultiMAE(
         input_adapters=input_adapters,
-        output_adapters=output_adapters,
+        output_adapters=None,
         dim_tokens=dim_tokens,
-        depth=12,
-        num_heads=8
+        depth=cfg.depth,
+        num_heads=cfg.num_heads,
+        drop_path_rate=cfg.drop_path_rate,
+        drop_rate=cfg.drop_rate,
+        attn_drop_rate=cfg.attn_drop_rate,
     )
 
-    preds, _ = model(batch)
-    save_preds(preds, cfg.plot_folder)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device).eval()
 
-    
+    batch = next(iter(loader))
+    batch["cam_bev"] = batch["cam_bev"].to(device)
 
-if __name__ == '__main__':
+    for k, v in batch["radar"].items():
+        if isinstance(v, torch.Tensor):
+            batch["radar"][k] = v.to(device)
+
+    with torch.no_grad():
+        encoder_tokens, task_masks = model(
+            batch,
+            mask_inputs=False,
+            num_encoded_tokens=cfg.num_encoded_tokens,
+        )
+
+        print(type(encoder_tokens))
+        print(encoder_tokens.shape)
+        print(task_masks.keys())
+
+    # save_preds(preds, cfg.plot_folder)
+    # print("saved to:", cfg.plot_folder)
+
+
+if __name__ == "__main__":
     main()

@@ -22,7 +22,6 @@ from bev_multimae.finetuning.centerpoint import (
 )
 from bev_multimae.datasets.data import collate_radar
 from bev_multimae.datasets.finetuning_data import BEVFineData
-from bev_multimae.finetuning.centerpoint import build_centerpoint_targets_with_gaussian
 import numpy as np
 
 log = logging.getLogger(__name__)
@@ -290,4 +289,11 @@ def run_finetune(cfg: DictConfig):
 
 
 if __name__ == '__main__':
+    import hydra
+    from omegaconf import DictConfig
+
+    @hydra.main(config_path="../../configs", config_name="config_finetune", version_base=None)
+    def main(cfg: DictConfig):
+        run_finetune(cfg)
+
     main()
