@@ -30,39 +30,60 @@ log = logging.getLogger(__name__)
 
 def collate_finetune(batch):
     """Collate function for finetuning that adds detection targets."""
-    # Collate base data
-    cam_bev_list = [item['cam_bev'] for item in batch]
+    # Collate radar using pillar format (handled by collate_radar logic)
     radar_list = [item['radar'] for item in batch]
-    boxes_list = [item['boxes'] for item in batch]
+    radar_batch = {}
+
+    for k in radar_list[0].keys():
+        if k == "batch_size":
+            continue
+        radar_batch[k] = torch.cat([r[k] for r in radar_list], dim=0)
+
+    # Remap batch indices for points and pillar_coords
+    points_list, coords_list = [], []
+    for i, r in enumerate(radar_list):
+        p = r["points"].clone()
+        p[:, 0] = i
+        points_list.append(p)
+        c = r["pillar_coords"].clone()
+        c[:, 0] = i
+        coords_list.append(c)
+
+    pillar_offset = 0
+    inv_list = []
+    for i, r in enumerate(radar_list):
+        inv = r["pillar_inv"].clone() + pillar_offset
+        inv_list.append(inv)
+        pillar_offset += r["pillar_coords"].shape[0]
+
+    radar_batch["pillar_inv"] = torch.cat(inv_list)
+    radar_batch["points"] = torch.cat(points_list)
+    radar_batch["pillar_coords"] = torch.cat(coords_list)
+    radar_batch["batch_size"] = len(batch)
 
     # Stack camera images
-    cam_bev = torch.stack(cam_bev_list)
-
-    # Collate radar (handle dict structure)
-    radar_dict = {}
-    for key in radar_list[0].keys():
-        if isinstance(radar_list[0][key], torch.Tensor):
-            radar_dict[key] = torch.stack([r[key] for r in radar_list])
-        elif isinstance(radar_list[0][key], int):
-            radar_dict[key] = radar_list[0][key]
-        else:
-            radar_dict[key] = [r[key] for r in radar_list]
+    cam_bev = torch.stack([item['cam_bev'] for item in batch])
 
     # Build detection targets for each sample in batch
+    boxes_list = [item['boxes'] for item in batch]
     detection_targets_list = []
     for boxes in boxes_list:
         # Convert list of (8,3) boxes to detection targets
-        # boxes: list of np.ndarray or None entries
         targets = build_centerpoint_targets_with_gaussian(
             boxes,
             bev_range=(-20, -20, 20, 20),
             grid_size=64,  # After downsampling in CenterPointHead
             gaussian_radius=2
         )
-        # Convert to batch format (add batch dim)
+        # Transpose to (C, H, W) format for batch stacking
+        targets_transposed = {}
         for key in targets:
-            targets[key] = targets[key].unsqueeze(0)  # (1, H, W, C) -> (H, W, C)
-        detection_targets_list.append(targets)
+            # Targets are (H, W, C), transpose to (C, H, W)
+            if targets[key].dim() == 3:
+                targets_transposed[key] = targets[key].permute(2, 0, 1).unsqueeze(0)
+            else:
+                targets_transposed[key] = targets[key].unsqueeze(0)
+        detection_targets_list.append(targets_transposed)
 
     # Stack detection targets
     detection_targets = {}
@@ -73,7 +94,7 @@ def collate_finetune(batch):
 
     return {
         'cam_bev': cam_bev,
-        'radar': radar_dict,
+        'radar': radar_batch,
         'detection_targets': detection_targets,
     }
 
