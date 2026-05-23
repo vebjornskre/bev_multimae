@@ -1,26 +1,26 @@
 # Finetuning-specific training config
 
-batch_size: 128
+batch_size: 64
 num_workers: 8
 prefetch_factor: 2
 pin_memory: true
 persistent_workers: true
 train_mode: finetune
 
-lr: 6e-5
-encoder_lr: 7e-7
-weight_decay: 0.12
+lr: 5e-5
+encoder_lr: 5e-5
+weight_decay: 0.09
 optimizer: adamw
 
-max_epochs: 70
+max_epochs: 80
 min_epochs: 1
 warmup_steps: 500
 gradient_clip_val: 1.0
 
 # pretrained_checkpoint: "best_model_epoch=07_val_loss=4.1142_best_finetuned.ckpt"
 pretrained_checkpoint: "best_model_epoch=211_val_loss=4.6157_best.ckpt"
-freeze_encoder: true
-load_pretrained_encoder: true
+freeze_encoder: false
+load_pretrained_encoder: false
 
 centerpoint_channels: 128
 include_global_token: true
@@ -45,7 +45,7 @@ attn_drop_rate: 0.0
 save_top_k: 1
 continue_training: False
 continue_checkpoint: "best_3Dmodel_epoch=17_val_total_loss=2.9893.ckpt"
-best_model: "best_3Dmodel_epoch=13_val_total_loss=2.9327.ckpt"
+best_model: "best_3Dmodel_epoch=07_val_total_loss=3.1353.ckpt"
 
 new_lr: true
 
@@ -54,7 +54,7 @@ profile: false
 profile_path: "profiling/finetune.prof"
 
 # For visualization, single model pass
-sample_idx: 290
+sample_idx: 180
 direction: "right"
 split: "val"
 visualize: True
