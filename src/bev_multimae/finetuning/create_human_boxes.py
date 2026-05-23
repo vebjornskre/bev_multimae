@@ -12,7 +12,7 @@ from sklearn.cluster import DBSCAN
 import math
 from scipy.optimize import linear_sum_assignment
 
-from bev_multimae.visualization.finetuning import plot_human_boxes
+from bev_multimae.visualization.finetuning_dataviz import plot_human_boxes
 from bev_multimae.preprocessing.camera.lift import load_cam_info
 from bev_multimae.preprocessing.camera.depth import DepthEstimator
 from bev_multimae.preprocessing.get_transforms import get_all_tfs

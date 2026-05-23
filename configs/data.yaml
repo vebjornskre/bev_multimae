@@ -36,6 +36,7 @@ depth_model: "moge"      # can also be metric3d, depth_any, moge
 
 # BEV
 direction: left
+split: val
 
 # # Original
 # voxel_size: [2.5, 2.5, 25]
@@ -90,3 +91,4 @@ logging: False
 
 ######### FINETUNING ########
 box_depth: 0.6
+

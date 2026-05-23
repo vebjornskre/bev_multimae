@@ -105,8 +105,19 @@ class PFNLayer(nn.Module):
         x = self.norm(x) if self.use_norm else x
         x = self.relu(x)
 
-        x_max = torch.full((num_pillars, x.shape[1]), -1e9, device=x.device)
-        x_max.scatter_reduce_(0, unq_inv.unsqueeze(1).expand(-1, x.shape[1]), x, reduce="amax")
+        x_max = torch.full(
+            (num_pillars, x.shape[1]),
+            torch.finfo(x.dtype).min,
+            device=x.device,
+            dtype=x.dtype,
+        )
+
+        x_max.scatter_reduce_(
+            0,
+            unq_inv.unsqueeze(1).expand(-1, x.shape[1]),
+            x,
+            reduce="amax",
+        )
 
         if self.last_layer:
             return x_max

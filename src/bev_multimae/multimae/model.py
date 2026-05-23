@@ -234,13 +234,20 @@ class Bev_MultiMAE(nn.Module):
             num_encoded_tokens = sum([tensor.shape[1] for tensor in input_task_tokens.values()])
 
         ## Generating masks
-        if task_masks is None:
+        if mask_inputs and task_masks is None:
             task_masks, ids_keep, ids_restore = self.generate_random_masks(
                 input_task_tokens,
                 num_encoded_tokens,
                 alphas=alphas,
                 sample_tasks_uniformly=sample_tasks_uniformly
             )
+        elif task_masks is None:
+            # No masking when mask_inputs=False: keep all tokens
+            task_masks = {domain: torch.zeros(batch_size, tensor.shape[1], dtype=torch.long, device=tensor.device)
+                         for domain, tensor in input_task_tokens.items()}
+            total_tokens = sum([tensor.shape[1] for tensor in input_task_tokens.values()])
+            ids_keep = torch.arange(total_tokens, device=next(iter(input_task_tokens.values())).device).unsqueeze(0).expand(batch_size, -1)
+            ids_restore = ids_keep.clone()
         else:
             mask_all = torch.cat([task_masks[task] for task in input_task_tokens.keys()], dim=1)
             ids_shuffle = torch.argsort(mask_all, dim=1)

@@ -1,121 +1,67 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+
+def _task_head(out_ch, dropout, mid_ch=64):
+    return nn.Sequential(
+        nn.Conv2d(128, mid_ch, kernel_size=3, padding=1),
+        nn.BatchNorm2d(mid_ch),
+        nn.ReLU(inplace=True),
+        nn.Dropout2d(dropout),
+        nn.Conv2d(mid_ch, out_ch, kernel_size=1),
+    )
+
+
+def _backbone_block(in_ch, out_ch, stride=1):
+    return nn.Sequential(
+        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, stride=stride),
+        nn.BatchNorm2d(out_ch),
+        nn.ReLU(inplace=True),
+    )
 
 
 class CenterPointHead(nn.Module):
-    """
-    CenterPoint detection head for BEV object detection.
-    Takes spatial BEV features and outputs detection heatmaps and regressions.
-
-    Architecture:
-    - Input: (B, 128, 128, 128) spatial features from TokenToSpatialAdapter
-    - Shared backbone: Series of Conv2d layers
-    - Task heads:
-      - Heatmap: 1 channel (object presence)
-      - Regression: 2 channels (xy offset)
-      - Height: 1 channel (z coordinate)
-      - Dimensions: 3 channels (length, width, height)
-      - Rotation: 2 channels (sin, cos of yaw)
-    """
-
-    def __init__(self, in_channels=128, num_tasks=5):
+    def __init__(self, in_channels=128, num_backbone_layers=2, dropout=0.0):
         super().__init__()
-        self.in_channels = in_channels
-        self.num_tasks = num_tasks
 
-        # Shared backbone: reduce spatial resolution and learn features
-        self.backbone = nn.Sequential(
-            nn.Conv2d(in_channels, 128, kernel_size=3, padding=1, stride=2),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1, stride=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-        )
-        # After backbone: (B, 128, 64, 64)
+        if num_backbone_layers == 2:
+            self.backbone = nn.Sequential(
+                _backbone_block(in_channels, 128, stride=2),
+                _backbone_block(128, 128),
+            )
+        elif num_backbone_layers == 3:
+            self.backbone = nn.Sequential(
+                _backbone_block(in_channels, 128),
+                _backbone_block(128, 128),
+                _backbone_block(128, 128, stride=2),
+            )
+        else:
+            raise ValueError(f"num_backbone_layers must be 2 or 3, got {num_backbone_layers}")
 
-        # Task-specific heads
-        self.heatmap_head = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 1, kernel_size=1),
-        )
+        self.heatmap_head = _task_head(1, dropout, mid_ch=64)
+        self.reg_head     = _task_head(2, dropout, mid_ch=64)
+        self.height_head  = _task_head(1, dropout, mid_ch=64)
+        self.dim_head     = _task_head(3, dropout, mid_ch=128)
+        self.rot_head     = _task_head(2, dropout, mid_ch=128)
 
-        self.reg_head = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 2, kernel_size=1),
-        )
-
-        self.height_head = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 1, kernel_size=1),
-        )
-
-        self.dim_head = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 3, kernel_size=1),
-        )
-
-        self.rot_head = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 2, kernel_size=1),
-        )
+        nn.init.constant_(self.heatmap_head[-1].bias, -2.0)
 
     def forward(self, spatial_features):
-        """
-        Args:
-            spatial_features: (B, 128, 128, 128) BEV spatial features
-
-        Returns:
-            detections dict with keys:
-            - heatmap: (B, 1, 64, 64) object heatmap
-            - reg: (B, 2, 64, 64) xy regression
-            - height: (B, 1, 64, 64) z coordinate
-            - dim: (B, 3, 64, 64) lwh dimensions
-            - rot: (B, 2, 64, 64) sin/cos rotation
-        """
-        # Shared backbone
-        feat = self.backbone(spatial_features)  # (B, 128, 64, 64)
-
-        # Task heads
-        heatmap = torch.sigmoid(self.heatmap_head(feat))
-        reg = self.reg_head(feat)
-        height = self.height_head(feat)
-        dim = F.relu(self.dim_head(feat))
-        rot = self.rot_head(feat)
-
+        feat = self.backbone(spatial_features)
         return {
-            'heatmap': heatmap,
-            'reg': reg,
-            'height': height,
-            'dim': dim,
-            'rot': rot,
+            "heatmap": self.heatmap_head(feat),
+            "reg":     self.reg_head(feat),
+            "height":  self.height_head(feat),
+            "dim":     torch.nn.functional.softplus(self.dim_head(feat)), # positive
+            "rot":     self.rot_head(feat),
         }
 
 
 class CenterPointDetector(nn.Module):
-    """
-    End-to-end CenterPoint detector combining spatial adapter and detection head.
-    """
-
     def __init__(self, token_adapter, detection_head):
         super().__init__()
         self.token_adapter = token_adapter
         self.detection_head = detection_head
 
     def forward(self, encoder_tokens):
-        """
-        Args:
-            encoder_tokens: (B, 649, 384) encoder output tokens
-
-        Returns:
-            detections dict
-        """
-        spatial_features = self.token_adapter(encoder_tokens)
-        detections = self.detection_head(spatial_features)
-        return detections
+        return self.detection_head(self.token_adapter(encoder_tokens))

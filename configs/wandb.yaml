@@ -1,3 +1,4 @@
 wandb_entity: vebjornskre-danmarks-tekniske-universitet-dtu
 wandb_project: bev_multimae_centerpoint
+# wandb_project: false
 run_name: test_run_1

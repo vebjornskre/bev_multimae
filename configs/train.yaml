@@ -1,5 +1,7 @@
 # Traning specific parameters
 
+train_mode: pretrain
+
 batch_size: 128
 # batch_size: 264
 num_workers: 8
@@ -17,7 +19,7 @@ drop_path_rate: 0.4
 drop_rate: 0.05
 attn_drop_rate: 0.0
 
-norm_pix: False
+norm_pix: True
 
 log_every_n_steps: 10
 save_top_k: 1

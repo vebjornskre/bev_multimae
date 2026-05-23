@@ -1,7 +1,6 @@
 import pytorch_lightning as pl
 import torch
 from bev_multimae.finetuning.centerpoint.losses import CenterPointLoss
-from bev_multimae.finetuning.centerpoint.targets import build_centerpoint_targets_with_gaussian_gpu
 
 
 class CenterPointLightning(pl.LightningModule):
@@ -10,22 +9,30 @@ class CenterPointLightning(pl.LightningModule):
         encoder,
         detector,
         lr=1e-4,
+        encoder_lr=1e-6,
         weight_decay=0.01,
         warmup_steps=500,
-        num_encoded_tokens=288,
         heatmap_weight=1.0,
         offset_weight=1.0,
         height_weight=0.1,
         dim_weight=1.0,
         rot_weight=1.0,
+        modality_dropout=False,
+        drop_radar_prob=0.0,
+        drop_cam_prob=0.0,
+        freeze_encoder=False,
     ):
         super().__init__()
         self.encoder = encoder
         self.detector = detector
         self.lr = lr
+        self.encoder_lr = encoder_lr
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
-        self.num_encoded_tokens = num_encoded_tokens
+        self.modality_dropout = modality_dropout
+        self.drop_radar_prob = drop_radar_prob
+        self.drop_cam_prob = drop_cam_prob
+        self.freeze_encoder = freeze_encoder
 
         self.loss_fn = CenterPointLoss(
             heatmap_weight=heatmap_weight,
@@ -37,104 +44,110 @@ class CenterPointLightning(pl.LightningModule):
 
         self.save_hyperparameters(ignore=["encoder", "detector"])
 
+    def train(self, mode=True):
+        super().train(mode)
+        if self.freeze_encoder and mode:
+            self.encoder.eval()
+        return self
+
     def forward(self, batch):
-        encoder_tokens, task_masks = self.encoder(
-            batch,
-            mask_inputs=False,
-            num_encoded_tokens=self.num_encoded_tokens,
-        )
-        detections = self.detector(encoder_tokens)
-        return detections
+        if self.freeze_encoder:
+            with torch.no_grad():
+                encoder_tokens, _ = self.encoder(batch, mask_inputs=False)
+            encoder_tokens = encoder_tokens.detach()
+        else:
+            encoder_tokens, _ = self.encoder(batch, mask_inputs=False)
+        return self.detector(encoder_tokens)
+
+    def _log_losses(self, prefix, loss_dict, batch_size):
+        for key, val in loss_dict.items():
+            self.log(f"{prefix}/{key}", val, batch_size=batch_size, on_step=False, on_epoch=True)
 
     def training_step(self, batch, batch_idx):
-        detections = self(batch)
-
-        # Build targets on GPU
-        boxes_list = batch["boxes"]
-        device = batch["cam_bev"].device
-        targets = self._build_targets_batch(boxes_list, device)
-
-        loss_dict = self.loss_fn(detections, targets)
-        total_loss = loss_dict["total_loss"]
-
-        batch_size = batch["cam_bev"].size(0)
-        self.log("train/total_loss", total_loss, batch_size=batch_size)
-
-        return total_loss
+        batch = self.apply_modality_dropout(batch)
+        loss_dict = self.loss_fn(self(batch), batch["targets"])
+        self._log_losses("train", loss_dict, batch["cam_bev"].size(0))
+        return loss_dict["total_loss"]
 
     def validation_step(self, batch, batch_idx):
-        detections = self(batch)
-
-        # Build targets on GPU
-        boxes_list = batch["boxes"]
-        device = batch["cam_bev"].device
-        targets = self._build_targets_batch(boxes_list, device)
-
-        loss_dict = self.loss_fn(detections, targets)
-        total_loss = loss_dict["total_loss"]
-
+        loss_dict = self.loss_fn(self(batch), batch["targets"])
         batch_size = batch["cam_bev"].size(0)
-        self.log("val/total_loss", total_loss, batch_size=batch_size)
-
-        return total_loss
-
-    def _build_targets_batch(self, boxes_list, device):
-        """Build detection targets on GPU for a batch."""
-        detection_targets_list = []
-        for boxes in boxes_list:
-            # Build targets on GPU
-            targets = build_centerpoint_targets_with_gaussian_gpu(
-                boxes,
-                bev_range=(-20, -20, 20, 20),
-                grid_size=64,
-                gaussian_radius=2,
-                device=device
-            )
-            # Transpose to (C, H, W) format for batch stacking
-            targets_transposed = {}
-            for key in targets:
-                if targets[key].dim() == 3:
-                    targets_transposed[key] = targets[key].permute(2, 0, 1).unsqueeze(0)
-                else:
-                    targets_transposed[key] = targets[key].unsqueeze(0)
-            detection_targets_list.append(targets_transposed)
-
-        # Stack detection targets
-        detection_targets = {}
-        for key in detection_targets_list[0].keys():
-            detection_targets[key] = torch.cat(
-                [t[key] for t in detection_targets_list], dim=0
-            )
-        return detection_targets
+        self._log_losses("val", loss_dict, batch_size)
+        self.log("val_total_loss", loss_dict["total_loss"], batch_size=batch_size, on_step=False, on_epoch=True)
+        return loss_dict["total_loss"]
 
     def configure_optimizers(self):
-        decay, no_decay = [], []
-        for name, p in self.named_parameters():
-            if not p.requires_grad:
-                continue
-            if p.ndim <= 1 or "bias" in name:
-                no_decay.append(p)
-            else:
-                decay.append(p)
+        def group_params(module, lr):
+            decay, no_decay = [], []
+            for name, p in module.named_parameters():
+                if not p.requires_grad:
+                    continue
+                if p.ndim <= 1 or "bias" in name:
+                    no_decay.append(p)
+                else:
+                    decay.append(p)
 
-        param_groups = [
-            {"params": decay, "weight_decay": self.weight_decay},
-            {"params": no_decay, "weight_decay": 0.0},
-        ]
-        optimizer = torch.optim.AdamW(param_groups, lr=self.lr)
+            groups = []
+            if decay:
+                groups.append({"params": decay, "lr": lr, "weight_decay": self.weight_decay})
+            if no_decay:
+                groups.append({"params": no_decay, "lr": lr, "weight_decay": 0.0})
+            return groups
 
-        total_steps = self.trainer.estimated_stepping_batches
-        warmup = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=0.01, end_factor=1.0, total_iters=self.warmup_steps
+        param_groups = (
+            group_params(self.detector, self.lr)
+            + group_params(self.encoder, self.encoder_lr)
         )
-        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=total_steps - self.warmup_steps, eta_min=1e-6
-        )
+
+        optimizer = torch.optim.AdamW(param_groups)
+
+        total_steps = max(1, self.trainer.estimated_stepping_batches)
+        warmup_steps = min(self.warmup_steps, max(0, total_steps - 1))
+
         scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer, schedulers=[warmup, cosine], milestones=[self.warmup_steps]
+            optimizer,
+            schedulers=[
+                torch.optim.lr_scheduler.LinearLR(
+                    optimizer,
+                    start_factor=0.01,
+                    end_factor=1.0,
+                    total_iters=warmup_steps,
+                ),
+                torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer,
+                    T_max=max(1, total_steps - warmup_steps),
+                    eta_min=1e-6,
+                ),
+            ],
+            milestones=[warmup_steps],
         )
 
         return {
             "optimizer": optimizer,
             "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
         }
+
+    def apply_modality_dropout(self, batch):
+        if not self.training or not self.modality_dropout:
+            return batch
+
+        r = torch.rand(1, device=self.device).item()
+        batch = dict(batch)
+
+        if r < self.drop_radar_prob:
+            radar = dict(batch["radar"])
+            radar["points"] = radar["points"].clone()
+            radar["points"][:, 1:] = 0
+
+            if "f_cluster" in radar:
+                radar["f_cluster"] = torch.zeros_like(radar["f_cluster"])
+
+            if "f_center" in radar:
+                radar["f_center"] = torch.zeros_like(radar["f_center"])
+
+            batch["radar"] = radar
+
+        elif r < self.drop_radar_prob + self.drop_cam_prob:
+            batch["cam_bev"] = batch["cam_bev"].clone() * 0
+
+        return batch

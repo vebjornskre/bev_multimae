@@ -3,4 +3,3 @@ defaults:
   - model
   - train
   - wandb
-  - train_finetune

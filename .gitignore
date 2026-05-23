@@ -20,6 +20,7 @@ data/processed/
 data_finetuning/
     
 # Trained models
+fine_model_checkpoints/
 model_checkpoints/
 models/
 *.ckpt

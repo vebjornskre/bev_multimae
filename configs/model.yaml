@@ -6,3 +6,4 @@ depth: 12
 num_heads: 6
 
 model_folder: 'model_checkpoints/'
+fine_model_folder: 'fine_model_checkpoints/'

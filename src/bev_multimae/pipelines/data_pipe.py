@@ -26,7 +26,12 @@ class BEVPipeline:
         self.cfg = cfg
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.voxel_size = cfg.voxel_size
-        self.point_cloud_range = cfg.point_cloud_range
+        
+        if cfg.direction == 'right':
+            self.point_cloud_range = cfg.right_point_cloud_range
+        else:
+            self.point_cloud_range = cfg.left_point_cloud_range
+
         self.hi_res_voxel = cfg.hi_res_voxel
         self.grid_size = self._compute_grid_size(self.voxel_size)
         self.hi_res_grid_size = self._compute_grid_size(self.hi_res_voxel)
@@ -94,6 +99,7 @@ class BEVPipeline:
                 self.T_rad_cam, 
                 plot=self.cfg.meshlab_cam
             )
+
         bev_cam_splatted = hard_splat(pts_cam_ego, colors, self.voxel_size, self.point_cloud_range, self.grid_size)
         bev_cam_hires    = hard_splat(pts_cam_ego, colors, self.hi_res_voxel, self.point_cloud_range, self.hi_res_grid_size)
         cam_patches      = patchify(bev_cam_hires, self.patch_size_pixels)
@@ -119,3 +125,4 @@ class BEVPipeline:
     def _process_lidar(self, lidar):
         ego_lidar = lidar_to_ego(self.cfg, lidar, self.T_lid_ego)
         return ego_lidar, lidar
+

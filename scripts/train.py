@@ -11,7 +11,7 @@ from bev_multimae.engines.finetune import run_finetune
 def main(cfg: DictConfig):
     torch.set_float32_matmul_precision(cfg.matmul_precision)
 
-    train_mode = 'finetune'
+    train_mode = cfg.get("train_mode", "finetune")
 
     if train_mode == 'pretrain':
         if cfg.profile:
@@ -22,6 +22,7 @@ def main(cfg: DictConfig):
             prof.dump_stats(cfg.profile_path)
         else:
             run_pretrain(cfg)
+
     elif train_mode == 'finetune':
         prof = cProfile.Profile()
         prof.enable()

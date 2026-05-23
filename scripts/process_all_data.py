@@ -17,11 +17,10 @@ def main(cfg: DictConfig):
 
     direction = cfg.direction # can also be left and right
     if direction == 'left':
-        OmegaConf.update(cfg, "point_cloud_range", [1.5, -21, -5, 28.5, 6, 20])
         OmegaConf.update(cfg, "processed_data_dir", "data/processed/left")
 
     if direction == 'right':
-        OmegaConf.update(cfg, "point_cloud_range", [1.5, -6, -5, 28.5, 21, 20])
+        OmegaConf.update(cfg, "processed_data_dir", "data/processed/right")
 
     prof = cProfile.Profile()
 

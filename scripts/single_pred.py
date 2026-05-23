@@ -4,7 +4,7 @@ import logging
 import hydra
 from omegaconf import DictConfig
 
-from bev_multimae.engines.inference import setup_and_infer
+from bev_multimae.engines.pretrain_inference import setup_and_infer
 
 
 log = logging.getLogger(__name__)

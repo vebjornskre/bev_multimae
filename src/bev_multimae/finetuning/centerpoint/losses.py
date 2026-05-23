@@ -4,38 +4,21 @@ import torch.nn.functional as F
 
 
 class FastFocalLoss(nn.Module):
-    """
-    Focal loss for dense heatmap prediction.
-    Adapted from CenterPoint to work with dense targets instead of sparse.
-
-    Args:
-        out: (B, 1, H, W) predicted heatmap
-        target: (B, 1, H, W) target heatmap with Gaussian blobs
-    """
-
     def __init__(self):
-        super(FastFocalLoss, self).__init__()
+        super().__init__()
 
-    def forward(self, out, target):
-        """
-        Args:
-            out: (B, 1, H, W) predicted heatmap [0, 1]
-            target: (B, 1, H, W) target heatmap [0, 1]
-        """
-        # Focal loss: down-weight easy negatives
-        # For background (target=0): loss = log(1-out) * out^2
-        # For foreground (target=1): loss = log(out) * (1-out)^2
+    def forward(self, out, target, mask):
+        out = out.sigmoid().clamp(1e-4, 1 - 1e-4)
 
-        out = torch.clamp(out, min=1e-4, max=1.0 - 1e-4)
+        pos = mask.float()
+        neg = 1 - pos
+        neg_weights = torch.pow(1 - target, 4)
 
-        # Positive (object present)
-        pos_loss = -(1 - target) ** 4 * torch.log(1 - out)
+        pos_loss = -torch.log(out) * torch.pow(1 - out, 2) * pos
+        neg_loss = -torch.log(1 - out) * torch.pow(out, 2) * neg_weights * neg
 
-        # Negative (background)
-        neg_loss = -target * torch.log(out) * torch.pow(1 - out, 2)
-
-        loss = pos_loss + neg_loss
-        return loss.mean()
+        num_pos = pos.sum().clamp(min=1.0)
+        return (pos_loss.sum() + neg_loss.sum()) / num_pos
 
 
 class RegLoss(nn.Module):
@@ -119,7 +102,7 @@ class CenterPointLoss(nn.Module):
         mask = targets['masks']  # (B, 1, H, W)
 
         # Compute losses
-        heatmap_loss = self.heatmap_loss_fn(pred_heatmap, target_heatmap)
+        heatmap_loss = self.heatmap_loss_fn(pred_heatmap, target_heatmap, mask)
 
         # Regression losses (only at object centers)
         reg_loss = self.reg_loss_fn(pred_reg, target_reg, mask)
@@ -137,10 +120,10 @@ class CenterPointLoss(nn.Module):
         )
 
         return {
-            'total_loss': total_loss,
-            'heatmap_loss': heatmap_loss.item(),
-            'reg_loss': reg_loss.item(),
-            'height_loss': height_loss.item(),
-            'dim_loss': dim_loss.item(),
-            'rot_loss': rot_loss.item(),
+            "total_loss": total_loss,
+            "heatmap_loss": heatmap_loss.detach(),
+            "reg_loss": reg_loss.detach(),
+            "height_loss": height_loss.detach(),
+            "dim_loss": dim_loss.detach(),
+            "rot_loss": rot_loss.detach(),
         }

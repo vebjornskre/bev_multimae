@@ -15,62 +15,13 @@ from bev_multimae.multimae.adapters.rad_adapt import RadarAdapter
 from bev_multimae.multimae.adapters.cam_adapt import CameraAdapter
 from bev_multimae.multimae.model import Bev_MultiMAE
 from bev_multimae.finetuning.model_lightning import CenterPointLightning
-from bev_multimae.finetuning.centerpoint import (
-    TokenToSpatialAdapter,
-    CenterPointHead,
-    CenterPointDetector,
-)
+from bev_multimae.finetuning.centerpoint.token_adapter import TokenToSpatialAdapter
+from bev_multimae.finetuning.centerpoint.model import CenterPointHead, CenterPointDetector
 from bev_multimae.datasets.data import collate_radar
-from bev_multimae.datasets.finetuning_data import BEVFineData
+from bev_multimae.datasets.finetuning_data import BEVFineData, collate_finetune
 import numpy as np
 
 log = logging.getLogger(__name__)
-
-
-def collate_finetune(batch):
-    """Collate function for finetuning - keeps boxes, targets built on GPU."""
-    # Collate radar using pillar format
-    radar_list = [item['radar'] for item in batch]
-    radar_batch = {}
-
-    for k in radar_list[0].keys():
-        if k == "batch_size":
-            continue
-        radar_batch[k] = torch.cat([r[k] for r in radar_list], dim=0)
-
-    # Remap batch indices for points and pillar_coords
-    points_list, coords_list = [], []
-    for i, r in enumerate(radar_list):
-        p = r["points"].clone()
-        p[:, 0] = i
-        points_list.append(p)
-        c = r["pillar_coords"].clone()
-        c[:, 0] = i
-        coords_list.append(c)
-
-    pillar_offset = 0
-    inv_list = []
-    for i, r in enumerate(radar_list):
-        inv = r["pillar_inv"].clone() + pillar_offset
-        inv_list.append(inv)
-        pillar_offset += r["pillar_coords"].shape[0]
-
-    radar_batch["pillar_inv"] = torch.cat(inv_list)
-    radar_batch["points"] = torch.cat(points_list)
-    radar_batch["pillar_coords"] = torch.cat(coords_list)
-    radar_batch["batch_size"] = len(batch)
-
-    # Stack camera images
-    cam_bev = torch.stack([item['cam_bev'] for item in batch])
-
-    # Keep boxes as-is (will build targets on GPU in training_step)
-    boxes_list = [item['boxes'] for item in batch]
-
-    return {
-        'cam_bev': cam_bev,
-        'radar': radar_batch,
-        'boxes': boxes_list,
-    }
 
 
 def run_finetune(cfg: DictConfig):
@@ -181,9 +132,9 @@ def run_finetune(cfg: DictConfig):
             state_dict = ckpt['state_dict']
             # Remove 'model.' prefix if present
             state_dict = {k.replace('model.', ''): v for k, v in state_dict.items()}
-            encoder.load_state_dict(state_dict, strict=False)
+            encoder.load_state_dict(state_dict, strict=True)
         else:
-            encoder.load_state_dict(ckpt, strict=False)
+            encoder.load_state_dict(ckpt, strict=True)
 
         log.info('Pretrained encoder loaded successfully')
 
@@ -191,6 +142,7 @@ def run_finetune(cfg: DictConfig):
     if cfg.freeze_encoder:
         for param in encoder.parameters():
             param.requires_grad = False
+        encoder.eval()  # set eval before wrapping in Lightning
         log.info('Encoder frozen for finetuning')
 
     # Create detector components
@@ -199,13 +151,19 @@ def run_finetune(cfg: DictConfig):
         output_channels=cfg.centerpoint_channels,
         include_global=cfg.include_global_token
     )
-    detection_head = CenterPointHead(in_channels=cfg.centerpoint_channels)
+    detection_head = CenterPointHead(
+        in_channels=cfg.centerpoint_channels,
+        num_backbone_layers=cfg.get("num_backbone_layers", 2),
+        dropout=cfg.get("centerpoint_dropout", 0.0),
+    )
     detector = CenterPointDetector(token_adapter, detection_head)
+
+    detector = torch.compile(detector)
 
     # Model checkpoint callback
     checkpoint_callback = ModelCheckpoint(
-        dirpath=cfg.model_folder,
-        filename="best_model_{epoch:02d}_{val/total_loss:.4f}",
+        dirpath=cfg.fine_model_folder,
+        filename="best_3Dmodel_{epoch:02d}_{val_total_loss:.4f}",
         monitor="val/total_loss",
         mode="min",
         save_top_k=cfg.save_top_k,
@@ -257,15 +215,28 @@ def run_finetune(cfg: DictConfig):
         encoder=encoder,
         detector=detector,
         lr=cfg.lr,
+        encoder_lr=cfg.get("encoder_lr", cfg.lr),
         weight_decay=cfg.weight_decay,
         warmup_steps=cfg.warmup_steps,
-        num_encoded_tokens=cfg.num_encoded_tokens,
         heatmap_weight=cfg.heatmap_weight,
         offset_weight=cfg.offset_weight,
         height_weight=cfg.height_weight,
         dim_weight=cfg.dim_weight,
         rot_weight=cfg.rot_weight,
+        modality_dropout=cfg.get("modality_dropout", False),
+        drop_radar_prob=cfg.get("drop_radar_prob", 0.0),
+        drop_cam_prob=cfg.get("drop_cam_prob", 0.0),
+        freeze_encoder=cfg.freeze_encoder
     )
+
+    if cfg.get("continue_training", False):
+        ckpt_path = os.path.join(cfg.fine_model_folder, cfg.get("continue_checkpoint"))
+        log.info(f"Continuing from finetuned checkpoint weights: {ckpt_path}")
+
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        model_lightning.load_state_dict(ckpt["state_dict"], strict=False)
+
+        log.info("Finetuned model weights loaded")
 
     # Trainer
     trainer = Trainer(
@@ -277,7 +248,8 @@ def run_finetune(cfg: DictConfig):
         default_root_dir=cfg.model_folder,
         log_every_n_steps=len(train_loader),
         gradient_clip_val=1.0,
-        enable_progress_bar=False
+        enable_progress_bar=False,
+        precision=cfg.get("precision", "16-mixed")
     )
 
     os.makedirs(cfg.model_folder, exist_ok=True)
@@ -290,8 +262,6 @@ def run_finetune(cfg: DictConfig):
 
 
 if __name__ == '__main__':
-    import hydra
-    from omegaconf import DictConfig
 
     @hydra.main(config_path="../../configs", config_name="config_finetune", version_base=None)
     def main(cfg: DictConfig):

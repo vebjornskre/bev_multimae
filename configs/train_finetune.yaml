@@ -1,50 +1,82 @@
 # Finetuning-specific training config
 
-batch_size: 64
-num_workers: 4
+batch_size: 128
+num_workers: 8
 prefetch_factor: 2
 pin_memory: true
 persistent_workers: true
+train_mode: finetune
 
-lr: 1e-4
-weight_decay: 0.01
+lr: 6e-5
+encoder_lr: 7e-7
+weight_decay: 0.12
 optimizer: adamw
 
-max_epochs: 1
+max_epochs: 70
 min_epochs: 1
 warmup_steps: 500
 gradient_clip_val: 1.0
 
-pretrained_checkpoint: "best_model_epoch=07_val_loss=4.1142.ckpt"
-freeze_encoder: false
+# pretrained_checkpoint: "best_model_epoch=07_val_loss=4.1142_best_finetuned.ckpt"
+pretrained_checkpoint: "best_model_epoch=211_val_loss=4.6157_best.ckpt"
+freeze_encoder: true
 load_pretrained_encoder: true
 
 centerpoint_channels: 128
-include_global_token: false
+include_global_token: true
 
 heatmap_weight: 1.0
 offset_weight: 1.0
-height_weight: 0.1
+height_weight: 1.0
 dim_weight: 1.0
-rot_weight: 1.0
+rot_weight: 0.0
 
 augment: true
 v_flip_rate: 0.5
 h_flip_rate: 0.5
-rot_rate: 0.2
-rot_angle: [-20, 20]
+rot_rate: 0.5
+rot_angle: [-180, 180]
 viz_augment: false
 
-drop_path_rate: 0.4
+drop_path_rate: 0.1
 drop_rate: 0.05
 attn_drop_rate: 0.0
-num_encoded_tokens: 156
 
 save_top_k: 1
-continue_training: false
-best_model: ""
+continue_training: False
+continue_checkpoint: "best_3Dmodel_epoch=17_val_total_loss=2.9893.ckpt"
+best_model: "best_3Dmodel_epoch=13_val_total_loss=2.9327.ckpt"
+
 new_lr: true
 
 matmul_precision: high
 profile: false
 profile_path: "profiling/finetune.prof"
+
+# For visualization, single model pass
+sample_idx: 290
+direction: "right"
+split: "val"
+visualize: True
+score_thresh: 0.2
+ablation_test: True
+max_pool: False # Only for ablation test
+
+use_circle_nms: true
+min_radius: 0.3
+
+num_backbone_layers: 2
+modality_dropout: true
+drop_radar_prob: 0.1
+drop_cam_prob: 0.3
+use_double_flip: true
+use_exp_dim: false
+centerpoint_dropout: 0.3
+
+precision: 16-mixed
+
+eval_split: "val"
+eval_directions: ["right", "left"]
+
+score_thresholds: [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45]
+center_dist_thresholds: [0.5, 1.0, 1,5, 2.0]
