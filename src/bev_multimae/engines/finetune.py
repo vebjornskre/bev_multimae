@@ -13,6 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from bev_multimae.multimae.adapters.rad_adapt import RadarAdapter
 from bev_multimae.multimae.adapters.cam_adapt import CameraAdapter
+from bev_multimae.multimae.adapters.feat_adapt import FeatureAdapter
 from bev_multimae.multimae.model import Bev_MultiMAE
 from bev_multimae.finetuning.model_lightning import CenterPointLightning
 from bev_multimae.finetuning.centerpoint.token_adapter import TokenToSpatialAdapter
@@ -90,27 +91,45 @@ def run_finetune(cfg: DictConfig):
     # Unpack meta data from the training data
     meta = train_ds_right.meta
 
-    grid_size = meta['grid_size']
-    grid_size_hires = meta['hi_res_grid_size']
+    grid_size = meta["grid_size"]
+    grid_size_hires = meta["hi_res_grid_size"]
 
     nx, ny = grid_size[:2]
     nx_hi, ny_hi = grid_size_hires[:2]
+
     H_cam, W_cam = ny_hi, nx_hi
     patch_size = (H_cam // ny, W_cam // nx)
 
-    num_point_features = meta['num_point_features']
+    num_point_features = meta["num_point_features"]
     num_vfe_features = cfg.num_vfe_features
     dim_tokens = cfg.dim_tokens
 
-    # Create input adapters for encoder
+    bev_feat_grid_size = meta.get("bev_feat_grid_size", cfg.bev_feat_grid_size)
+    bev_feat_channels = cfg.bev_feat_channels
+
+    nx_feat, ny_feat = bev_feat_grid_size[:2]
+    feat_patch_size = (ny_feat // ny, nx_feat // nx)
+
+    if ny_feat % ny != 0 or nx_feat % nx != 0:
+        raise ValueError(
+            f"bev_feat_grid_size {bev_feat_grid_size} must be divisible by token grid {(nx, ny)}"
+        )
+
     rad_adapt = RadarAdapter(dim_tokens, grid_size, num_point_features, num_vfe_features)
     cam_adapt = CameraAdapter(dim_tokens, cfg.cam_channels, patch_size, grid_size_hires)
+    feat_adapt = FeatureAdapter(
+        d_model=dim_tokens,
+        channels=bev_feat_channels,
+        patch_size=feat_patch_size,
+        bev_feat_grid_size=(ny_feat, nx_feat),
+    )
+
     input_adapters = {
-        'radar': rad_adapt,
-        'cam_bev': cam_adapt
+        "radar": rad_adapt,
+        "cam_bev": cam_adapt,
+        "bev_feat": feat_adapt,
     }
 
-    # Create encoder (pretrained)
     encoder = Bev_MultiMAE(
         input_adapters=input_adapters,
         output_adapters=None,
@@ -119,24 +138,14 @@ def run_finetune(cfg: DictConfig):
         num_heads=cfg.num_heads,
         drop_path_rate=cfg.drop_path_rate,
         drop_rate=cfg.drop_rate,
-        attn_drop_rate=cfg.attn_drop_rate
+        attn_drop_rate=cfg.attn_drop_rate,
     )
 
     # Load pretrained encoder checkpoint if provided
     if cfg.pretrained_checkpoint and os.path.exists(cfg.pretrained_checkpoint):
-        log.info(f'Loading pretrained encoder from {cfg.pretrained_checkpoint}')
-        ckpt = torch.load(cfg.pretrained_checkpoint, map_location='cpu')
-
-        # Extract model weights from Lightning checkpoint
-        if 'state_dict' in ckpt:
-            state_dict = ckpt['state_dict']
-            # Remove 'model.' prefix if present
-            state_dict = {k.replace('model.', ''): v for k, v in state_dict.items()}
-            encoder.load_state_dict(state_dict, strict=True)
-        else:
-            encoder.load_state_dict(ckpt, strict=True)
-
-        log.info('Pretrained encoder loaded successfully')
+        log.info(f"Loading pretrained encoder from {cfg.pretrained_checkpoint}")
+        encoder = load_pretrain(encoder, cfg.pretrained_checkpoint)
+        log.info("Pretrained encoder loaded successfully")
 
     # Freeze encoder if specified
     if cfg.freeze_encoder:
@@ -171,9 +180,9 @@ def run_finetune(cfg: DictConfig):
     )
 
     # WandB logging
-    if cfg.wandb_project:
+    if cfg.wandb_project_finetune:
         wandb_logger = WandbLogger(
-            project=cfg.wandb_project,
+            project=cfg.wandb_project_finetune,
             entity=cfg.wandb_entity,
             log_model=False,
             config=OmegaConf.to_container(cfg, resolve=True)
@@ -226,6 +235,7 @@ def run_finetune(cfg: DictConfig):
         modality_dropout=cfg.get("modality_dropout", False),
         drop_radar_prob=cfg.get("drop_radar_prob", 0.0),
         drop_cam_prob=cfg.get("drop_cam_prob", 0.0),
+        drop_feat_prob=cfg.get("radar_feat_prob", 0.0),
         freeze_encoder=cfg.freeze_encoder
     )
 

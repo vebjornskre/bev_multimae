@@ -20,6 +20,7 @@ class CenterPointLightning(pl.LightningModule):
         modality_dropout=False,
         drop_radar_prob=0.0,
         drop_cam_prob=0.0,
+        drop_feat_prob=0.0,
         freeze_encoder=False,
     ):
         super().__init__()
@@ -32,6 +33,7 @@ class CenterPointLightning(pl.LightningModule):
         self.modality_dropout = modality_dropout
         self.drop_radar_prob = drop_radar_prob
         self.drop_cam_prob = drop_cam_prob
+        self.drop_feat_prob = drop_feat_prob
         self.freeze_encoder = freeze_encoder
 
         self.loss_fn = CenterPointLoss(
@@ -149,5 +151,9 @@ class CenterPointLightning(pl.LightningModule):
 
         elif r < self.drop_radar_prob + self.drop_cam_prob:
             batch["cam_bev"] = batch["cam_bev"].clone() * 0
+
+        elif r < self.drop_radar_prob + self.drop_cam_prob + self.drop_feat_prob:
+            if "bev_feat" in batch:
+                batch["bev_feat"] = batch["bev_feat"].clone() * 0
 
         return batch

@@ -184,27 +184,30 @@ class Bev_MultiMAE(nn.Module):
     def generate_input_info(self, input_task_tokens):
         input_info = OrderedDict()
         i = 0
-        input_info['tasks'] = {}
+        input_info["tasks"] = {}
+
         for domain, tensor in input_task_tokens.items():
             num_tokens = tensor.shape[1]
-            
-            if domain == 'cam_bev':
+
+            if domain == "cam_bev":
                 recon_size = self.input_adapters[domain].grid_size_hires
+            elif domain == "bev_feat":
+                recon_size = self.input_adapters[domain].bev_feat_grid_size
             else:
                 recon_size = self.input_adapters[domain].grid_size
 
             d = {
-                'num_tokens': num_tokens,
-                'has_2d_posemb': True,
-                'start_idx': i,
-                'end_idx': i + num_tokens,
-                'recon_size': recon_size,
+                "num_tokens": num_tokens,
+                "has_2d_posemb": True,
+                "start_idx": i,
+                "end_idx": i + num_tokens,
+                "recon_size": recon_size,
             }
             i += num_tokens
-            input_info['tasks'][domain] = d
+            input_info["tasks"][domain] = d
 
-        input_info['num_task_tokens'] = i
-        input_info['num_global_tokens'] = self.num_global_tokens
+        input_info["num_task_tokens"] = i
+        input_info["num_global_tokens"] = self.num_global_tokens
 
         return input_info
     

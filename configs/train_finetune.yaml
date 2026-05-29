@@ -7,19 +7,19 @@ pin_memory: true
 persistent_workers: true
 train_mode: finetune
 
-lr: 6e-5
-encoder_lr: 7e-7
-weight_decay: 0.12
+lr: 5e-5
+encoder_lr: 1e-6
+weight_decay: 0.09
 optimizer: adamw
 
-max_epochs: 70
+max_epochs: 80
 min_epochs: 1
 warmup_steps: 500
 gradient_clip_val: 1.0
 
 # pretrained_checkpoint: "best_model_epoch=07_val_loss=4.1142_best_finetuned.ckpt"
-pretrained_checkpoint: "best_model_epoch=211_val_loss=4.6157_best.ckpt"
-freeze_encoder: true
+pretrained_checkpoint: "best_model_epoch=197_val_loss=11.4960.ckpt"
+freeze_encoder: True
 load_pretrained_encoder: true
 
 centerpoint_channels: 128
@@ -31,7 +31,7 @@ height_weight: 1.0
 dim_weight: 1.0
 rot_weight: 0.0
 
-augment: true
+augment: false # DO NOT SET TRUE UNTIL FIXED TRANSFORMING LABELS ALSO
 v_flip_rate: 0.5
 h_flip_rate: 0.5
 rot_rate: 0.5
@@ -44,9 +44,9 @@ attn_drop_rate: 0.0
 
 save_top_k: 1
 continue_training: False
-continue_checkpoint: "best_3Dmodel_epoch=17_val_total_loss=2.9893.ckpt"
-best_model: "best_3Dmodel_epoch=13_val_total_loss=2.9327.ckpt"
-
+continue_checkpoint: best_3Dmodel_epoch=23_val_total_loss=3.0878.ckpt
+# best_model: "best_3Dmodel_epoch=07_val_total_loss=3.1353.ckpt"
+best_model: best_3Dmodel_epoch=23_val_total_loss=3.0878.ckpt
 new_lr: true
 
 matmul_precision: high
@@ -54,7 +54,7 @@ profile: false
 profile_path: "profiling/finetune.prof"
 
 # For visualization, single model pass
-sample_idx: 290
+sample_idx: 234
 direction: "right"
 split: "val"
 visualize: True
@@ -68,8 +68,9 @@ min_radius: 0.3
 num_backbone_layers: 2
 modality_dropout: true
 drop_radar_prob: 0.1
-drop_cam_prob: 0.3
-use_double_flip: true
+drop_cam_prob: 0.1
+drop_feat_prob: 0.1
+use_double_flip: false
 use_exp_dim: false
 centerpoint_dropout: 0.3
 
@@ -79,4 +80,9 @@ eval_split: "val"
 eval_directions: ["right", "left"]
 
 score_thresholds: [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45]
-center_dist_thresholds: [0.5, 1.0, 1,5, 2.0]
+center_dist_thresholds: [0.5, 1.0, 1.5, 2.0]
+
+
+drop_cam_inference: false
+drop_rad_inference: false
+drop_feat_inference: true

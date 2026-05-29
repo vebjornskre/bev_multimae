@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from einops import rearrange
 from torch.utils.data import ConcatDataset
 
-from bev_multimae.datasets.data import BEVDataset, collate_radar
+from bev_multimae.datasets.data_with_feat import BEVDataset, collate_radar
 
 
 def denorm_patches(pred, target, patch_size):
