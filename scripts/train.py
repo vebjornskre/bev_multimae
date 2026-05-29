@@ -3,7 +3,7 @@ import torch
 import hydra
 from omegaconf import DictConfig
 
-from bev_multimae.engines.pretrain import run_pretrain
+from bev_multimae.engines.pretrain_with_features import run_pretrain
 from bev_multimae.engines.finetune import run_finetune
 
 

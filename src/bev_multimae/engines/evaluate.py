@@ -150,6 +150,33 @@ def greedy_match(pred_xy, pred_scores, target_xy, dist_thresh):
     false_fn = [i for i in range(len(target_xy)) if i not in matched_targets]
     return matches, false_pos, false_fn
 
+def drop_inputs(batch, drop_cam=False, drop_rad=False, drop_feat=False):
+    if drop_cam:
+        if "cam_bev" in batch:
+            batch["cam_bev"] = torch.zeros_like(batch["cam_bev"])
+        if "img_2d" in batch and torch.is_tensor(batch["img_2d"]):
+            batch["img_2d"] = torch.zeros_like(batch["img_2d"])
+
+    if drop_rad and "radar" in batch:
+        radar = dict(batch["radar"])
+
+        if "points" in radar:
+            radar["points"] = radar["points"].clone()
+            radar["points"][:, 1:] = 0
+
+        if "f_cluster" in radar:
+            radar["f_cluster"] = torch.zeros_like(radar["f_cluster"])
+
+        if "f_center" in radar:
+            radar["f_center"] = torch.zeros_like(radar["f_center"])
+
+        batch["radar"] = radar
+
+    if drop_feat and "bev_feat" in batch:
+        batch["bev_feat"] = torch.zeros_like(batch["bev_feat"])
+
+    return batch
+
 
 def average_precision(all_scores, all_tp, num_targets):
     if len(all_scores) == 0 or num_targets == 0:
@@ -176,6 +203,17 @@ def average_precision(all_scores, all_tp, num_targets):
 
 
 def run_model(model, batch, point_cloud_range, cfg):
+    batch = drop_inputs(
+        batch,
+        drop_cam=cfg.get("drop_cam_inference", False),
+        drop_rad=cfg.get("drop_rad", False),
+        drop_feat=cfg.get("drop_feat", False),
+    )
+
+    print(f"drop_cam_inference: {cfg.get('drop_cam_inference', False)}")
+    print(f"drop_rad: {cfg.get('drop_rad', False)}")
+    print(f"drop_feat: {cfg.get('drop_feat', False)}")
+
     with torch.no_grad():
         encoder_tokens, _ = model.encoder(batch, mask_inputs=False)
         detections = model.detector(encoder_tokens)

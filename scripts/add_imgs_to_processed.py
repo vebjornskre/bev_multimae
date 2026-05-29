@@ -30,10 +30,10 @@ def main(cfg: DictConfig):
     split = cfg.split
 
     if direction == "left":
-        OmegaConf.update(cfg, "processed_data_dir", "data/processed/left")
+        OmegaConf.update(cfg, "processed_data_dir", "data/processed_2/left")
 
     if direction == "right":
-        OmegaConf.update(cfg, "processed_data_dir", "data/processed/right")
+        OmegaConf.update(cfg, "processed_data_dir", "data/processed_2/right")
 
     events = sorted(os.listdir(cfg.mcap_extract_path))
     n_events = len(events)

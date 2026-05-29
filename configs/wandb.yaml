@@ -1,4 +1,5 @@
 wandb_entity: vebjornskre-danmarks-tekniske-universitet-dtu
-wandb_project: bev_multimae_centerpoint
+wandb_project_finetune: bev_multimae_centerpoint # Finetuning
+wandb_project: bev_multimae_featureBEV # Pretrianing with feature bev
 # wandb_project: false
 run_name: test_run_1

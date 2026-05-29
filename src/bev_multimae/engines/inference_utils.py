@@ -5,7 +5,10 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 import random
 
-from bev_multimae.datasets.data import collate_radar
+try:
+    from bev_multimae.datasets.data_with_feat import collate_radar
+except ImportError:
+    from bev_multimae.datasets.data import collate_radar
 from bev_multimae.engines.train_utils import *
 
 
@@ -160,6 +163,8 @@ def run_diagnostic(model, ds, collate_radar, device, grid_size, patch_size,
     def to_device(batch):
         batch["cam_bev"] = batch["cam_bev"].to(device)
         batch["radar_target"] = batch["radar_target"].to(device)
+        if "bev_feat" in batch:
+            batch["bev_feat"] = batch["bev_feat"].to(device)
         for k, v in batch["radar"].items():
             if isinstance(v, torch.Tensor):
                 batch["radar"][k] = v.to(device)
@@ -181,7 +186,10 @@ def run_diagnostic(model, ds, collate_radar, device, grid_size, patch_size,
         task_masks = {
             "cam_bev": cam_mask,
             "radar": torch.zeros(B, N, device=device),
+            
         }
+        if "bev_feat" in batch:
+            task_masks["bev_feat"] = torch.zeros(B, N, device=device)
 
         preds, _ = model(
             batch,
@@ -232,6 +240,8 @@ def run_diagnostic(model, ds, collate_radar, device, grid_size, patch_size,
             "cam_bev": torch.zeros(B, N, device=device),
             "radar": rad_mask,
         }
+        if "bev_feat" in batch:
+            task_masks["bev_feat"] = torch.zeros(B, N, device=device)
 
         preds, _ = model(
             batch,
@@ -405,7 +415,7 @@ def run_diagnostic(model, ds, collate_radar, device, grid_size, patch_size,
             a["cam_bev"] = fixed_cam
             b["cam_bev"] = fixed_cam.clone()
 
-            num_pos = 70
+            num_pos = 0
 
             positions = random.sample(
                 [(row, col) for row in range(grid_size[1]) for col in range(grid_size[0])],
@@ -459,6 +469,8 @@ def run_diagnostic(model, ds, collate_radar, device, grid_size, patch_size,
                     "cam_bev": cam_mask,
                     "radar": rad_mask,
                 }
+                if "bev_feat" in a:
+                    task_masks["bev_feat"] = torch.zeros(1, N, device=device)
 
                 preds, _ = model(
                     a,

@@ -7,11 +7,15 @@ batch_size: 128
 num_workers: 8
 prefetch_factor: 4
 # lr: 9e-4
-lr: 1e-5
-max_epochs: 10
+lr: 1e-4
+max_epochs: 200
 min_epochs: 1
 # num_encoded_tokens: 100
-num_encoded_tokens: 156
+
+# num_encoded_tokens: 156 # For 2 modalities  Gives 24.1% coverage
+num_encoded_tokens: 234 # For 3 modalities
+# num_encoded_tokens: 274
+
 # num_encoded_tokens: 200
 weight_decay: 0.1
 warmup_steps: 1000
@@ -33,10 +37,21 @@ rot_rate: 0.5
 rot_angle: [-180, 180]
 viz_augment: False
 
-continue_training: False
-best_model: 'best_model_epoch=07_val_loss=4.1142_best_finetuned'
+continue_training: True
+
+# best_model: 'best_model_epoch=07_val_loss=4.1142_best_finetuned'
+best_model: best_model_epoch=128_val_loss=11.6945
+
+load_old_pretrain: false
+old_pretrain_checkpoint: "best_model_epoch=128_val_loss=11.6945.ckpt"
+
 new_lr: True  
 
 matmul_precision: high
 profile: false
 profile_path: 'profiling/train.prof'
+
+bev_feat_patch_size: 3
+feat_weight: 1.0
+
+model_folder: "model_checkpoints"
