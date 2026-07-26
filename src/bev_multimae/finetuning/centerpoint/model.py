@@ -44,7 +44,7 @@ class CenterPointHead(nn.Module):
         self.dim_head     = _task_head(3, dropout, mid_ch=128)
         self.rot_head     = _task_head(2, dropout, mid_ch=128)
 
-        nn.init.constant_(self.heatmap_head[-1].bias, -2.0)
+        nn.init.constant_(self.heatmap_head[-1].bias, -2.19)
 
     def forward(self, spatial_features):
         feat = self.backbone(spatial_features)

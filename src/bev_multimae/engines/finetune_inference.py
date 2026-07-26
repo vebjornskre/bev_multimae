@@ -163,14 +163,16 @@ def build_model(cfg, meta):
             cfg.cam_channels,
             patch_size,
             grid_size_hires,
-        ),
-        "bev_feat" : FeatureAdapter(
+        )
+    }
+
+    if cfg.get("use_bev_feat", True):
+        input_adapters["bev_feat"] = FeatureAdapter(
             d_model=dim_tokens,
             channels=bev_feat_channels,
             patch_size=feat_patch_size,
             bev_feat_grid_size=(ny_feat, nx_feat),
         )
-    }
 
     encoder = Bev_MultiMAE(
         input_adapters=input_adapters,
@@ -282,6 +284,21 @@ def setup_and_infer(cfg, sample_idx, visualize=True):
     batch = collate_finetune([ds[sample_idx]])
     batch = move_batch(batch, device)
 
+    if cfg.get("drop_rad_inference", False):
+        batch["radar"]["points"][:, 1:] = 0
+
+        if "f_cluster" in batch["radar"]:
+            batch["radar"]["f_cluster"] = torch.zeros_like(batch["radar"]["f_cluster"])
+
+        if "f_center" in batch["radar"]:
+            batch["radar"]["f_center"] = torch.zeros_like(batch["radar"]["f_center"])
+
+    if cfg.get("drop_cam_inference", False):
+        batch["cam_bev"] = torch.zeros_like(batch["cam_bev"])
+
+    if cfg.get("drop_feat_inference", False) and "bev_feat" in batch:
+        batch["bev_feat"] = torch.zeros_like(batch["bev_feat"])
+
     if cfg.get("ablation_test", False):
         print_ablation_stats(batch)
 
@@ -346,7 +363,13 @@ def setup_and_infer(cfg, sample_idx, visualize=True):
     targets = batch.get("targets", None)
 
     if visualize and "img_2d" in batch:
-        save_path = os.path.join(cfg.plot_folder, "finetuning", "predictions")
+        save_path = os.path.join(
+            cfg.plot_folder,
+            "finetuning",
+            "predictions",
+            str(sample_idx),
+        )
+        os.makedirs(save_path, exist_ok=True)
         save_ablation_heatmaps(ablation, save_path, max_pool=cfg.max_pool)
 
         save_detections(

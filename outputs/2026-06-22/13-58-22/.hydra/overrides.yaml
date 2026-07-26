@@ -1,0 +1,3 @@
+- num_workers=0
+- +eval_batch_size=1
+- ++decode_score_thresh=0.1

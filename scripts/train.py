@@ -3,12 +3,20 @@ import torch
 import hydra
 from omegaconf import DictConfig
 
-from bev_multimae.engines.pretrain_with_features import run_pretrain
-from bev_multimae.engines.finetune import run_finetune
-
-
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
+
+    if cfg.use_bev_feat:
+        from bev_multimae.engines.finetune import run_finetune
+        from bev_multimae.engines.pretrain_with_features import run_pretrain
+
+        print('Using fetures as a modality')
+    else:
+        from bev_multimae.engines.finetune_2_modalities import run_finetune
+        from bev_multimae.engines.pretrain import run_pretrain
+
+        print('Only camBEV and radar')
+
     torch.set_float32_matmul_precision(cfg.matmul_precision)
 
     train_mode = cfg.get("train_mode", "finetune")

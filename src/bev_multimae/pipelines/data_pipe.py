@@ -17,6 +17,8 @@ from bev_multimae.preprocessing.get_transforms import get_all_tfs
 from bev_multimae.preprocessing.lidar.lidar_process_utils import lidar_to_ego
 from bev_multimae.visualization.BEV_visualization import plot_bev_target
 
+from time import perf_counter
+
 
 log = logging.getLogger(__name__)
 
@@ -66,11 +68,20 @@ class BEVPipeline:
         radar = self._merge_radar(frame['rad'])
         lidar = load_lidar(frame['lid'])
 
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = perf_counter()
+
         batch_dict_rad, bev_target, pts_rad_ego, pts_rad_sframe = self._process_radar(radar)
         pts_lidar, pts_lid_sframe = self._process_lidar(lidar)
 
         cal_pts = lidar if self.cfg.calibration == 'lidar' else radar
         cam_patches, bev_cam_splatted, bev_cam_hires, pts_cam_ego = self._process_img(img, cal_pts)
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        dt = perf_counter() - t0
+        log.info(f"[PROFILE] BEV sample processing time, excluding loading/model init/saving: {dt:.4f} s")
 
         return {
             "batch_dict_rad":    batch_dict_rad,    

@@ -2,12 +2,13 @@
 
 train_mode: pretrain
 
-batch_size: 128
+# batch_size: 128
+batch_size: 64
 # batch_size: 264
 num_workers: 8
 prefetch_factor: 4
 # lr: 9e-4
-lr: 1e-4
+lr: 3e-4
 max_epochs: 200
 min_epochs: 1
 # num_encoded_tokens: 100
@@ -23,7 +24,7 @@ drop_path_rate: 0.4
 drop_rate: 0.05
 attn_drop_rate: 0.0
 
-norm_pix: True
+norm_pix: False
 
 log_every_n_steps: 10
 save_top_k: 1
@@ -37,13 +38,14 @@ rot_rate: 0.5
 rot_angle: [-180, 180]
 viz_augment: False
 
-continue_training: True
+continue_training: False
 
-# best_model: 'best_model_epoch=07_val_loss=4.1142_best_finetuned'
-best_model: best_model_epoch=128_val_loss=11.6945
+# best_model: best_model_epoch=86_val_total_loss_unweighted=1.9718 # Best pretrained model
+best_model: final_model_no_normPix # Best pretrained model with norm_pix = False
 
-load_old_pretrain: false
-old_pretrain_checkpoint: "best_model_epoch=128_val_loss=11.6945.ckpt"
+load_old_pretrain: true
+# old_pretrain_checkpoint: "best_model_epoch=202_val_loss=4.3025_best_384_dim.ckpt" # Used by best
+old_pretrain_checkpoint: "best_model_epoch=86_val_total_loss_unweighted=1.9718.ckpt"
 
 new_lr: True  
 
@@ -51,7 +53,11 @@ matmul_precision: high
 profile: false
 profile_path: 'profiling/train.prof'
 
-bev_feat_patch_size: 3
-feat_weight: 1.0
+# bev_feat_patch_size: 3 # with 2d features then project
+bev_feat_patch_size: 1 # with direct BEV features
+feat_weight: 4.0 
+camera_weight: 5.0 
+rad_weight: 1.0
 
 model_folder: "model_checkpoints"
+

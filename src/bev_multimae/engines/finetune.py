@@ -12,7 +12,6 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from bev_multimae.multimae.adapters.rad_adapt import RadarAdapter
-from bev_multimae.multimae.adapters.cam_adapt import CameraAdapter
 from bev_multimae.multimae.adapters.feat_adapt import FeatureAdapter
 from bev_multimae.multimae.model import Bev_MultiMAE
 from bev_multimae.finetuning.model_lightning import CenterPointLightning
@@ -92,13 +91,7 @@ def run_finetune(cfg: DictConfig):
     meta = train_ds_right.meta
 
     grid_size = meta["grid_size"]
-    grid_size_hires = meta["hi_res_grid_size"]
-
     nx, ny = grid_size[:2]
-    nx_hi, ny_hi = grid_size_hires[:2]
-
-    H_cam, W_cam = ny_hi, nx_hi
-    patch_size = (H_cam // ny, W_cam // nx)
 
     num_point_features = meta["num_point_features"]
     num_vfe_features = cfg.num_vfe_features
@@ -116,7 +109,6 @@ def run_finetune(cfg: DictConfig):
         )
 
     rad_adapt = RadarAdapter(dim_tokens, grid_size, num_point_features, num_vfe_features)
-    cam_adapt = CameraAdapter(dim_tokens, cfg.cam_channels, patch_size, grid_size_hires)
     feat_adapt = FeatureAdapter(
         d_model=dim_tokens,
         channels=bev_feat_channels,
@@ -126,10 +118,10 @@ def run_finetune(cfg: DictConfig):
 
     input_adapters = {
         "radar": rad_adapt,
-        "cam_bev": cam_adapt,
         "bev_feat": feat_adapt,
     }
 
+    # Create encoder (pretrained)
     encoder = Bev_MultiMAE(
         input_adapters=input_adapters,
         output_adapters=None,
@@ -138,14 +130,40 @@ def run_finetune(cfg: DictConfig):
         num_heads=cfg.num_heads,
         drop_path_rate=cfg.drop_path_rate,
         drop_rate=cfg.drop_rate,
-        attn_drop_rate=cfg.attn_drop_rate,
+        attn_drop_rate=cfg.attn_drop_rate
     )
 
     # Load pretrained encoder checkpoint if provided
-    if cfg.pretrained_checkpoint and os.path.exists(cfg.pretrained_checkpoint):
-        log.info(f"Loading pretrained encoder from {cfg.pretrained_checkpoint}")
-        encoder = load_pretrain(encoder, cfg.pretrained_checkpoint)
-        log.info("Pretrained encoder loaded successfully")
+    if cfg.get("load_pretrained_encoder", False) and cfg.get("pretrained_checkpoint"):
+        ckpt_path = cfg.pretrained_checkpoint
+
+        if not os.path.isabs(ckpt_path):
+            ckpt_path = os.path.join(cfg.model_folder, ckpt_path)
+
+        if not ckpt_path.endswith(".ckpt"):
+            ckpt_path += ".ckpt"
+
+        if not os.path.exists(ckpt_path):
+            raise FileNotFoundError(f"Pretrained checkpoint not found: {ckpt_path}")
+
+        log.info(f"Loading pretrained encoder from {ckpt_path}")
+
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        state_dict = ckpt["state_dict"] if "state_dict" in ckpt else ckpt
+
+        state = {
+            k.removeprefix("model."): v
+            for k, v in state_dict.items()
+            if k.startswith("model.")
+        }
+
+        missing, unexpected = encoder.load_state_dict(state, strict=False)
+
+        log.info(f"Loaded pretrained encoder from {ckpt_path}")
+        log.info(f"Missing encoder keys: {missing}")
+        log.info(f"Ignored checkpoint keys: {unexpected}")
+    else:
+        log.info("Not loading pretrained encoder")
 
     # Freeze encoder if specified
     if cfg.freeze_encoder:
@@ -167,7 +185,7 @@ def run_finetune(cfg: DictConfig):
     )
     detector = CenterPointDetector(token_adapter, detection_head)
 
-    detector = torch.compile(detector)
+    # detector = torch.compile(detector)
 
     # Model checkpoint callback
     checkpoint_callback = ModelCheckpoint(
@@ -180,7 +198,7 @@ def run_finetune(cfg: DictConfig):
     )
 
     # WandB logging
-    if cfg.wandb_project_finetune:
+    if cfg.wandb_project:
         wandb_logger = WandbLogger(
             project=cfg.wandb_project_finetune,
             entity=cfg.wandb_entity,
@@ -234,8 +252,8 @@ def run_finetune(cfg: DictConfig):
         rot_weight=cfg.rot_weight,
         modality_dropout=cfg.get("modality_dropout", False),
         drop_radar_prob=cfg.get("drop_radar_prob", 0.0),
-        drop_cam_prob=cfg.get("drop_cam_prob", 0.0),
-        drop_feat_prob=cfg.get("radar_feat_prob", 0.0),
+        drop_cam_prob=0.0,
+        drop_feat_prob=cfg.get("drop_feat_prob", 0.0),
         freeze_encoder=cfg.freeze_encoder
     )
 
@@ -258,7 +276,7 @@ def run_finetune(cfg: DictConfig):
         default_root_dir=cfg.model_folder,
         log_every_n_steps=len(train_loader),
         gradient_clip_val=1.0,
-        enable_progress_bar=False,
+        enable_progress_bar=True,
         precision=cfg.get("precision", "16-mixed")
     )
 

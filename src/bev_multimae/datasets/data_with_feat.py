@@ -192,6 +192,10 @@ class BEVDataset(Dataset):
         }
 
         if bev_feat is not None:
+            # Runtime normalization: stabilize feature distribution
+            feat_mean = bev_feat.mean(dim=(1, 2), keepdim=True)
+            feat_std = bev_feat.std(dim=(1, 2), keepdim=True) + 1e-6
+            bev_feat = (bev_feat - feat_mean) / feat_std
             out["bev_feat"] = bev_feat
 
         return out

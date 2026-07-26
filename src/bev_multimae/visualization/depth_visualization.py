@@ -9,30 +9,33 @@ from PIL import Image
 import os
 import glob
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import numpy as np
 
+MODEL_NAMES = {
+    "metric3d": "Metric3D",
+    "depth_any": "Depth Anything",
+    "moge": "MoGe-2",
+    "depth_any_rel": "Depth Anything Relative",
+    "depth_pro": "Depth Pro",
+    "unidepth": "UniDepth",
+    "zoe" : "ZoeDepth"
+}
 
 def plot_depth_maps(cfg, img, depth, feat=None):
 
     if feat is not None:
-        # We dowsample to the size of feat
         target_size = feat.shape[-2:]
-
-        # Bilinear downsampling to feature maps resolution
         depth_ds = F.interpolate(depth, size=target_size, mode='bilinear', align_corners=False, antialias=True)
 
-        # Full image and depth map
         fig, axes = plt.subplots(1, 2, figsize=(10, 10))
-
         W, H = img.size
 
-        # Image
         if type(img) == torch.Tensor:
             img.cpu().numpy()
         axes[0].imshow(img)
         axes[0].set_title(f"Original Image (3x{H}x{W})")
         axes[0].axis("off")
         
-        # Depth
         if type(depth) == torch.Tensor:
             depth_np = depth.squeeze().cpu().numpy()
         else:
@@ -44,22 +47,15 @@ def plot_depth_maps(cfg, img, depth, feat=None):
         plt.savefig(f"{save_dir}/vis_full.png", dpi=200, bbox_inches="tight")
         plt.close()
 
-        # Feature map and downsampled depth
         fig, axes = plt.subplots(1, 2, figsize=(10, 10))
-        
         feat = feat.squeeze(0)
-
         C, W, H = feat.size()
-
-        # Average all channels or pick a channel
         feat_img = feat.mean(dim=0).cpu()
-        # feat_img = feat[0,...]
 
         axes[0].imshow(feat_img, cmap='viridis')
         axes[0].set_title(f"Feature Map (Mean({C})x{W}x{H})")
         axes[0].axis("off")
 
-        # Downsampled depth
         depth_ds_np = depth_ds.squeeze().cpu().numpy()
         axes[1].imshow(depth_ds_np, cmap='plasma')
         axes[1].set_title("Downsampled Depth")
@@ -67,22 +63,22 @@ def plot_depth_maps(cfg, img, depth, feat=None):
 
         plt.savefig(f"{save_dir}/vis_downsampled.png", dpi=200, bbox_inches="tight")
         plt.close()
-
         print(f'Figures saved: {save_dir}/vis_full.png, {save_dir}/vis_downsampled.png')
 
     else:
         save_dir = os.path.join(Path(to_absolute_path(cfg.plot_folder)), 'depth_imgs')
-        fname = f'depth_map_{cfg.depth_model}.png'
+        os.makedirs(save_dir, exist_ok=True)
+
+        model_name = MODEL_NAMES.get(cfg.depth_model, str(cfg.depth_model))
+
+        fname = f'depth_map_{model_name}.png'
         save_path = os.path.join(save_dir, fname)
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-        # Original image
         axes[0].imshow(img)
         axes[0].set_title("Original Image")
-        axes[0].axis("off")
 
-        # Depth map
         if type(depth) == torch.Tensor:
             depth_np = depth.squeeze().cpu().numpy()
         else:
@@ -92,27 +88,59 @@ def plot_depth_maps(cfg, img, depth, feat=None):
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im, cax=cax, label='Depth (m)')
         axes[1].set_title("Depth Map")
-        axes[1].axis("off")
+        axes[1].set_xlabel("u (px)", fontsize=14)
+        axes[1].set_ylabel("v (px)", fontsize=14)
+        axes[1].tick_params(axis="both", labelsize=12)
 
         plt.savefig(save_path, dpi=200, bbox_inches="tight")
         plt.close()
         print(f'Figure saved: {save_path}')
 
+        # Save raw depth
+        npy_path = save_path.replace('.png', '.npy')
+        np.save(npy_path, depth_np)
+        print(f'Depth saved: {npy_path}')
+
+        # Save depth as individual PNG with colorbar and title
+        fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+        im = ax.imshow(depth_np, cmap='plasma')
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.25)
+
+        cbar = plt.colorbar(im, cax=cax)
+        cbar.set_label("Depth (m)", fontsize=14)
+        cbar.ax.tick_params(labelsize=12)
+
+        ax.set_title(model_name, fontsize=15) #, fontweight='bold')
+        ax.set_xlabel("u (px)", fontsize=14)
+        ax.set_ylabel("v (px)", fontsize=14)
+        ax.tick_params(axis="both", labelsize=12)
+
+        individual_path = save_path.replace('.png', '_individual.png')
+        plt.savefig(individual_path, dpi=200)
+        plt.close()
+        print(f'Individual depth saved: {individual_path}')
+
+        # Save RGB once as individual PNG with title
+        rgb_path = os.path.join(save_dir, 'rgb.png')
+        if not os.path.exists(rgb_path):
+            img.save(rgb_path)
+            print(f'RGB saved: {rgb_path}')
+
+        rgb_individual_path = os.path.join(save_dir, 'rgb_individual.png')
+        if not os.path.exists(rgb_individual_path):
+            fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+            ax.imshow(img)
+            ax.set_title("Original", fontsize=14, fontweight='bold')
+            plt.savefig(rgb_individual_path, dpi=200, bbox_inches="tight")
+            plt.close()
+            print(f'RGB individual saved: {rgb_individual_path}')
+
 
 @hydra.main(config_path="../../../configs", config_name="data_config", version_base=None)
 def main(cfg: DictConfig) -> None:
-
-    # CODE BELOW DEPRECIATED SWITCH TO NEW METHOD USING THE DEPTH ESTIMATOR CLASS
-
-    # device = 'cpu'
-    # zoe, _, img = load_zoe(cfg, zoe=True, cnn=False, device=device)
-
-    # Path from cfg
-    # plot_folder = os.path.join(Path(to_absolute_path(cfg.plot_folder)), 'depth_imgs')
-
-    # Run depth estimation
-    # depth = zoe_depth(model=zoe, img=img)
-    # plot_depth_maps(plot_folder, img, depth)
     ...
+
 if __name__ == '__main__':
     main()

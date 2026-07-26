@@ -4,6 +4,7 @@ import torch
 import os
 import random
 from bev_multimae.preprocessing.BEV.dynamic_pillar_vfe import DynamicPillarizer, build_bev_target
+from bev_multimae.finetuning.targets_utils import build_centerpoint_targets_with_gaussian_gpu
 import torchvision
 import math
 import numpy as np
@@ -70,6 +71,7 @@ class BEVFineData(Dataset):
     ):
         assert split in ["train", "val", "test"]
 
+
         self.meta = torch.load(os.path.join(pretrain_path, "meta.pt"), map_location="cpu", weights_only=False)
         self.num_rad_channels = num_rad_channels
         self.img_2d = img_2d
@@ -128,6 +130,7 @@ class BEVFineData(Dataset):
 
             # If requested, only keep samples where the original 2D image and camera info exist.
             if self.img_2d and (not img_file.exists() or not cam_info_file.exists()):
+                print("missing:", img_file, img_file.exists(), cam_info_file, cam_info_file.exists())
                 continue
 
             self.samples.append((pretrain_file, label_file, img_file, cam_info_file))
@@ -184,11 +187,26 @@ class BEVFineData(Dataset):
         bev_feat = data["bev_feat"].float() if "bev_feat" in data else None
 
         if self.augment:
-            cam, bev_feat, data["radar"], _ = self.augment_sample(
+            cam, bev_feat, data["radar"], boxes = self.augment_sample(
                 cam,
                 bev_feat,
                 data["radar"]["points"],
+                boxes,
             )
+            # Rebuild targets from augmented boxes
+            # CenterPointHead outputs 64x64 heatmaps (128x128 from adapter with stride=2 backbone)
+            targets_dict = build_centerpoint_targets_with_gaussian_gpu(
+                boxes,
+                point_cloud_range=self.pillarizer.point_cloud_range,
+                grid_size=64,
+            )
+            # Permute from [H, W, C] to [C, H, W]
+            targets = {}
+            for k, v in targets_dict.items():
+                if v.dim() == 3:
+                    targets[k] = v.permute(2, 0, 1)
+                else:
+                    targets[k] = v
 
         if self.img_mean is not None and self.img_std is not None:
             cam = (cam - self.img_mean) / (self.img_std + 1e-6)
@@ -214,40 +232,133 @@ class BEVFineData(Dataset):
 
         return batch
 
-    # same augment_sample as BEVDataset, minus the bev_target build
-    def augment_sample(self, cam, bev_feat, rad_points):
+    def _transform_boxes_x_flip(self, boxes, x_center):
+        transformed = []
+
+        for box in boxes:
+            if box is None:
+                transformed.append(None)
+                continue
+
+            box_copy = box.copy()
+            box_copy[:, 0] = 2 * x_center - box_copy[:, 0]
+            transformed.append(box_copy)
+
+        return transformed
+
+
+    def _transform_boxes_y_flip(self, boxes, y_center):
+        transformed = []
+
+        for box in boxes:
+            if box is None:
+                transformed.append(None)
+                continue
+
+            box_copy = box.copy()
+            box_copy[:, 1] = 2 * y_center - box_copy[:, 1]
+            transformed.append(box_copy)
+
+        return transformed
+
+
+    def _transform_boxes_rotate(self, boxes, angle_rad, x_center, y_center):
+        cos = math.cos(angle_rad)
+        sin = math.sin(angle_rad)
+
+        transformed = []
+
+        for box in boxes:
+            if box is None:
+                transformed.append(None)
+                continue
+
+            box_copy = box.copy()
+            xy = box_copy[:, :2].copy()
+
+            box_copy[:, 0] = (
+                x_center
+                + cos * (xy[:, 0] - x_center)
+                - sin * (xy[:, 1] - y_center)
+            )
+
+            box_copy[:, 1] = (
+                y_center
+                + sin * (xy[:, 0] - x_center)
+                + cos * (xy[:, 1] - y_center)
+            )
+
+            transformed.append(box_copy)
+
+        return transformed
+
+
+    def augment_sample(self, cam, bev_feat, rad_points, boxes):
         pcr = self.pillarizer.point_cloud_range
+
         x_center = (pcr[0] + pcr[3]) / 2
         y_center = (pcr[1] + pcr[4]) / 2
 
-        if self.h_flip_rate and random.random() < self.h_flip_rate:
-            cam = torch.flip(cam, dims=[-2])
-            if bev_feat is not None:
-                bev_feat = torch.flip(bev_feat, dims=[-2])
-            rad_points[:, 2] = 2 * y_center - rad_points[:, 2]
+        rad_points = rad_points.clone()
 
-        if self.v_flip_rate and random.random() < self.v_flip_rate:
+        if self.h_flip_rate and random.random() < self.h_flip_rate:
             cam = torch.flip(cam, dims=[-1])
+
             if bev_feat is not None:
                 bev_feat = torch.flip(bev_feat, dims=[-1])
+
             rad_points[:, 1] = 2 * x_center - rad_points[:, 1]
+            boxes = self._transform_boxes_x_flip(boxes, x_center)
+
+        if self.v_flip_rate and random.random() < self.v_flip_rate:
+            cam = torch.flip(cam, dims=[-2])
+
+            if bev_feat is not None:
+                bev_feat = torch.flip(bev_feat, dims=[-2])
+
+            rad_points[:, 2] = 2 * y_center - rad_points[:, 2]
+            boxes = self._transform_boxes_y_flip(boxes, y_center)
 
         if self.rot_rate and random.random() < self.rot_rate:
-            angle_deg = random.uniform(self.rot_angle[0], self.rot_angle[1])
+            angle_deg = random.uniform(*self.rot_angle)
             angle_rad = math.radians(angle_deg)
-            cos, sin = math.cos(angle_rad), math.sin(angle_rad)
+
+            cos = math.cos(angle_rad)
+            sin = math.sin(angle_rad)
 
             xy = rad_points[:, 1:3].clone()
-            cx, cy = float(x_center), float(y_center)
 
-            rad_points[:, 1] = cx + cos * (xy[:, 0] - cx) - sin * (xy[:, 1] - cy)
-            rad_points[:, 2] = cy + sin * (xy[:, 0] - cx) + cos * (xy[:, 1] - cy)
+            rad_points[:, 1] = (
+                x_center
+                + cos * (xy[:, 0] - x_center)
+                - sin * (xy[:, 1] - y_center)
+            )
 
-            cam = torchvision.transforms.functional.rotate(cam, -angle_deg)
+            rad_points[:, 2] = (
+                y_center
+                + sin * (xy[:, 0] - x_center)
+                + cos * (xy[:, 1] - y_center)
+            )
+
+            cam = torchvision.transforms.functional.rotate(
+                cam,
+                -angle_deg,
+            )
+
             if bev_feat is not None:
-                bev_feat = torchvision.transforms.functional.rotate(bev_feat, -angle_deg)
+                bev_feat = torchvision.transforms.functional.rotate(
+                    bev_feat,
+                    -angle_deg,
+                )
 
-        batch_dict = self.pillarizer.forward(rad_points)
-        batch_dict["batch_size"] = 1
+            boxes = self._transform_boxes_rotate(
+                boxes,
+                angle_rad,
+                x_center,
+                y_center,
+            )
 
-        return cam, bev_feat, batch_dict, None
+        radar = self.pillarizer.forward(rad_points)
+        radar["batch_size"] = 1
+
+        return cam, bev_feat, radar, boxes

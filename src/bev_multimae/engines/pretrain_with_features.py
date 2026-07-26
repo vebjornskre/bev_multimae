@@ -66,8 +66,8 @@ def run_pretrain(cfg: DictConfig):
     # data_path_right = cfg.processed_data_dir_right
     # data_path_left  = cfg.processed_data_dir_left
     
-    data_path_right = "data/processed_2/right"
-    data_path_left  = "data/processed_2/left"
+    data_path_right = "data/processed_3/right"
+    data_path_left  = "data/processed_3/left"
     
 
     # DATASET INITIALIZATION
@@ -208,11 +208,11 @@ def run_pretrain(cfg: DictConfig):
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg.model_folder,
-        filename="best_model_{epoch:02d}_{val_loss:.4f}",
-        monitor="val_loss",
+        filename="best_model_{epoch:02d}_{val_total_loss_unweighted:.4f}",
+        monitor="val_total_loss_unweighted",
         mode="min",
         save_top_k=cfg.save_top_k,
-        save_last=False,
+        save_last=True,
     )
     
     # WandB logging
@@ -268,7 +268,7 @@ def run_pretrain(cfg: DictConfig):
         attn_drop_rate = cfg.attn_drop_rate
     )
 
-    if cfg.get("load_old_pretrain", False):
+    if cfg.get("load_old_pretrain", False) and not cfg.continue_training:
         old_ckpt_path = cfg.old_pretrain_checkpoint
 
         if not old_ckpt_path.endswith(".ckpt"):
@@ -298,6 +298,8 @@ def run_pretrain(cfg: DictConfig):
         data_aug=cfg.augment,
         num_rad_channels=cfg.rad_channels,
         feat_weight=cfg.get("feat_weight", 1.0),
+        camera_weight=cfg.get("camera_weight", 1.0),
+        rad_weight=cfg.get("rad_weight", 1.0),
         feat_patch_size=cfg.get("bev_feat_patch_size", 3),
     )
 
@@ -314,11 +316,10 @@ def run_pretrain(cfg: DictConfig):
 
     ckpt_path = os.path.join(cfg.model_folder, f'{cfg.best_model}.ckpt')
     log.info(f'Checkpoint exists: {os.path.exists(ckpt_path)} — {ckpt_path}')
-    continue_training = cfg.continue_training
 
     os.makedirs(cfg.model_folder, exist_ok=True)
 
-    if continue_training:
+    if cfg.continue_training:
         trainer.fit(model_lightning, train_loader, val_loader, ckpt_path=ckpt_path)
     else:
         trainer.fit(model_lightning, train_loader, val_loader)

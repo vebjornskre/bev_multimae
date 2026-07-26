@@ -66,7 +66,7 @@ def scale_pair(a, b, q=(1, 99)):
     return a, b, vmin, vmax
 
 
-def viz_preds(preds, batch, folder, radar_channel=None):
+def viz_preds(preds, batch, folder, radar_channel=None, point_cloud_range=None):
     save_folder = os.path.join(folder, "predictions")
     os.makedirs(save_folder, exist_ok=True)
 
@@ -94,6 +94,79 @@ def viz_preds(preds, batch, folder, radar_channel=None):
                 "Mean x from pillar center",
                 "Mean y from pillar center",
             ]
+            rad_units = [
+                None,
+                "log count",
+                "m",
+                "m/s",
+                "dBsm",
+                "m$^2$",
+                "(m/s)$^2$",
+                "dBsm$^2$",
+                "dB",
+                "m",
+                "m",
+            ]
+
+            fig, axes = plt.subplots(3, 4, figsize=(16, 10))
+            axes = axes.flatten()
+            fig.suptitle("Radar target and camera BEV", fontsize=24)
+
+            cam_bev = batch["cam_bev"][0].detach().cpu().permute(1, 2, 0).numpy()
+            cam_bev = np.clip(cam_bev[..., :3], 0, 1)
+
+            axes[0].imshow(cam_bev, origin="lower")
+
+            if point_cloud_range is not None:
+                pts = batch["radar"]["points"].detach().cpu().numpy()
+                pts = pts[pts[:, 0] == 0]
+
+                x = pts[:, 1]
+                y = pts[:, 2]
+
+                x_min, y_min, _, x_max, y_max, _ = point_cloud_range
+                H, W = cam_bev.shape[:2]
+
+                px = (x - x_min) / (x_max - x_min) * (W - 1)
+                py = (y - y_min) / (y_max - y_min) * (H - 1)
+
+                inside = (px >= 0) & (px < W) & (py >= 0) & (py < H)
+                axes[0].scatter(px[inside], py[inside], s=2, c="lime", alpha=0.7)
+
+            axes[0].set_title("Camera BEV with radar points")
+            axes[0].axis("off")
+
+            for ch in range(C):
+                title = rad_titles[ch] if ch < len(rad_titles) else f"Channel {ch}"
+                unit = rad_units[ch] if ch < len(rad_units) else None
+
+                inp_ch = inp[..., ch]
+
+                if ch == 0:
+                    plot_inp = (inp_ch > 0.5).astype(np.float32)
+                    v_min, v_max = 0, 1
+                else:
+                    occ_mask = inp[..., 0] > 0.5
+                    plot_inp = np.where(occ_mask, inp_ch, np.nan)
+                    v_min = np.nanmin(plot_inp)
+                    v_max = np.nanmax(plot_inp)
+
+                ax = axes[ch +1]
+                im = ax.imshow(plot_inp, cmap="jet", origin="lower", vmin=v_min, vmax=v_max)
+                ax.set_title(title)
+                ax.axis("off")
+
+                cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                if ch == 0:
+                    cbar.set_ticks([0, 1])
+                    cbar.set_ticklabels(["0", "1"])
+                elif unit is not None:
+                    cbar.set_label(unit)
+
+
+            plt.tight_layout(rect=[0, 0, 1, 0.96])
+            plt.savefig(os.path.join(save_folder, "radar_targets.png"), bbox_inches="tight", pad_inches=0.08)
+            plt.close()
 
             for ch in channels:
                 title = rad_titles[ch] if ch < len(rad_titles) else f"Channel {ch}"
@@ -102,6 +175,7 @@ def viz_preds(preds, batch, folder, radar_channel=None):
                 inp_ch = inp[..., ch]
 
                 if ch == 0:
+                    inp_ch = (inp_ch > 0.5).astype(np.float32)
                     plot_pred = (pred_ch > 0.5).astype(np.float32)
                     v_min, v_max = 0, 1
                 else:
@@ -125,10 +199,14 @@ def viz_preds(preds, batch, folder, radar_channel=None):
 
                 fig.subplots_adjust(right=0.88)
                 cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
-                fig.colorbar(im0, cax=cbar_ax)
+
+                cbar = fig.colorbar(im0, cax=cbar_ax)
+                if ch == 0:
+                    cbar.set_ticks([0, 1])
+                    cbar.set_ticklabels(["0", "1"])
 
                 name = f"radar_ch{ch}.png"
-                plt.savefig(os.path.join(save_folder, name), bbox_inches="tight", pad_inches=0)
+                plt.savefig(os.path.join(save_folder, name), bbox_inches="tight", pad_inches=0.08)
                 plt.close()
 
         elif k == "bev_feat":
@@ -163,7 +241,7 @@ def viz_preds(preds, batch, folder, radar_channel=None):
             fig.colorbar(im1, ax=axes[1, 1], fraction=0.046, pad=0.04)
 
             plt.tight_layout()
-            plt.savefig(os.path.join(save_folder, "bev_feat.png"), bbox_inches="tight", pad_inches=0)
+            plt.savefig(os.path.join(save_folder, "bev_feat.png"), bbox_inches="tight", pad_inches=0.08)
             plt.close()
 
         else:
@@ -184,5 +262,5 @@ def viz_preds(preds, batch, folder, radar_channel=None):
             for ax in axes:
                 ax.axis("off")
 
-            plt.savefig(os.path.join(save_folder, f"{k}.png"), bbox_inches="tight", pad_inches=0)
+            plt.savefig(os.path.join(save_folder, f"{k}.png"), bbox_inches="tight", pad_inches=0.08)
             plt.close()

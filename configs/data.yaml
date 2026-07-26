@@ -16,9 +16,13 @@ transforms_path: "data/transforms"
 
 camera_info: "data/raw/mcap_extract/evt_0dpi0fwKmPDYNXBa/camera/front_right/camera_info.npz"
 
-processed_data_dir: "data/processed_2"
-processed_data_dir_right: "data/processed_2/right"
-processed_data_dir_left: "data/processed_2/left"
+# processed_data_dir: "data/processed"
+# processed_data_dir_right: "data/processed/right"
+# processed_data_dir_left: "data/processed/left"
+
+processed_data_dir: "data/processed_3"
+processed_data_dir_right: "data/processed_3/right"
+processed_data_dir_left: "data/processed_3/left"
 
 finetuning_data_dir: "data_finetuning/"
 
@@ -46,17 +50,24 @@ split: val
 # # Original end
 
 # # Zoomed in (no treeline)
-voxel_size: [1.5, 1.5, 25]
+voxel_size: [1.5, 1.5, 25] # For radar pillars
 right_point_cloud_range: [1.5, -6, -5, 28.5, 21, 20] # Right camera
 left_point_cloud_range: [1.5, -21, -5, 28.5, 6, 20]   # Left camera
 
-hi_res_voxel: [0.1, 0.1, 25]
+hi_res_voxel: [0.1, 0.1, 25] # For camera pixels that are splatted
 cam_channels: 3 # RBG
 rad_channels: 11
 
-bev_feat_voxel: [0.5, 0.5, 25]
-bev_feat_channels: 384
-bev_feat_grid_size: [54, 54]
+# with 2d features then project
+# bev_feat_voxel: [0.5, 0.5, 25]
+# bev_feat_channels: 384
+# bev_feat_grid_size: [54, 54]
+
+# with direct BEV features
+bev_feat_voxel: [0.5, 0.5, 25] # Not applicaple
+bev_feat_channels: 136
+bev_feat_grid_size: [18, 18]
+
 
 # Point cloud specific 
 lb_percent: [0, 5, 0]     # Lower bound percientiles of points to include (x,y,z)
@@ -80,9 +91,9 @@ elevation_angle: -0.2        # rad
 
 # Plot/figure folder
 plot_folder: "reports/figures/"
-plotting: False
+plotting: false
 meshlab_cam: False
-
+  
 # Depth calibration
 calibration: 'lidar' # can also be radar or lidar
 ransac_residual_threshold: 1.5
@@ -105,3 +116,5 @@ depth_bins: 32
 sigma_depth: 2 # translates to: the feature is spread along 
                # depth with about ±2 m meaningful uncertainty, and roughly ±4 m weak support
 surface_cutoff_sigma: 3.0
+
+use_bev_feat: true

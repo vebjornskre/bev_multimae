@@ -131,7 +131,7 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, T_lid_
         log.info(f"Calibration depth range: min={proj['depth_cam'].min():.1f}m  max={proj['depth_cam'].max():.1f}m  median={np.median(proj['depth_cam']):.1f}m")
 
     if cfg.interp_depth_residuals:
-        depth_cal = interp_depth_residuals(depth_np, proj, cfg, plot=cfg.plotting)
+        depth_cal = interp_depth_residuals(depth_np, proj, cfg, plot=cfg.plotting, img=img)
 
         if cfg.logging:
             log.info('Calibrating with interpolation')
@@ -166,7 +166,7 @@ def calibrate_depth_with_sensor(cfg, depth_np, img_hw, depth_hw, cal_pts, T_lid_
     return depth_cal
 
 
-def interp_depth_residuals(depth_np: np.ndarray, proj: dict, cfg, plot=False) -> np.ndarray:
+def interp_depth_residuals(depth_np: np.ndarray, proj: dict, cfg, plot=False, img=None) -> np.ndarray:
     H, W = depth_np.shape
     u, v = proj["u"], proj["v"]
 
@@ -198,7 +198,7 @@ def interp_depth_residuals(depth_np: np.ndarray, proj: dict, cfg, plot=False) ->
     correction_small = rbf(grid_norm).reshape(vg.shape)
     correction = cv2.resize(correction_small.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
     if plot:
-        plot_depth_residuals(cfg, u, v, residuals, correction, H, W)
+        plot_depth_residuals(cfg, u, v, residuals, correction, H, W, img=img)
 
     return np.clip(depth_np + correction.astype(np.float32), 0.1, None).astype(np.float32)
 

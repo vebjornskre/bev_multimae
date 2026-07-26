@@ -68,14 +68,34 @@ class CenterPointLightning(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         batch = self.apply_modality_dropout(batch)
         loss_dict = self.loss_fn(self(batch), batch["targets"])
-        self._log_losses("train", loss_dict, batch["cam_bev"].size(0))
+        batch_size = batch["bev_feat"].size(0)
+
+        self._log_losses("train", loss_dict, batch_size)
+
         return loss_dict["total_loss"]
 
     def validation_step(self, batch, batch_idx):
         loss_dict = self.loss_fn(self(batch), batch["targets"])
-        batch_size = batch["cam_bev"].size(0)
+        batch_size = batch["bev_feat"].size(0)
+
         self._log_losses("val", loss_dict, batch_size)
-        self.log("val_total_loss", loss_dict["total_loss"], batch_size=batch_size, on_step=False, on_epoch=True)
+
+        self.log(
+            "val_total_loss",
+            loss_dict["total_loss_comparable"],
+            batch_size=batch_size,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        self.log(
+            "val_train_objective",
+            loss_dict["total_loss"],
+            batch_size=batch_size,
+            on_step=False,
+            on_epoch=True,
+        )
+
         return loss_dict["total_loss"]
 
     def configure_optimizers(self):
@@ -133,10 +153,18 @@ class CenterPointLightning(pl.LightningModule):
         if not self.training or not self.modality_dropout:
             return batch
 
-        r = torch.rand(1, device=self.device).item()
         batch = dict(batch)
 
-        if r < self.drop_radar_prob:
+        drop_radar = torch.rand(1, device=self.device).item() < self.drop_radar_prob
+        drop_feat = torch.rand(1, device=self.device).item() < self.drop_feat_prob
+
+        if drop_radar and drop_feat:
+            if self.drop_radar_prob <= self.drop_feat_prob:
+                drop_radar = False
+            else:
+                drop_feat = False
+
+        if drop_radar:
             radar = dict(batch["radar"])
             radar["points"] = radar["points"].clone()
             radar["points"][:, 1:] = 0
@@ -149,11 +177,7 @@ class CenterPointLightning(pl.LightningModule):
 
             batch["radar"] = radar
 
-        elif r < self.drop_radar_prob + self.drop_cam_prob:
-            batch["cam_bev"] = batch["cam_bev"].clone() * 0
-
-        elif r < self.drop_radar_prob + self.drop_cam_prob + self.drop_feat_prob:
-            if "bev_feat" in batch:
-                batch["bev_feat"] = batch["bev_feat"].clone() * 0
+        if drop_feat and "bev_feat" in batch:
+            batch["bev_feat"] = torch.zeros_like(batch["bev_feat"])
 
         return batch

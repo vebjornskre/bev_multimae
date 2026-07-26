@@ -41,22 +41,29 @@ class BevMultiMAELightning(pl.LightningModule):
         batch_size = batch["cam_bev"].size(0)
 
         self.log("train_loss", loss_dict["total_loss"], prog_bar=True, on_epoch=True, batch_size=batch_size)
-        self.log("train/cam_loss", loss_dict["cam_loss"], on_epoch=True, batch_size=batch_size)
-        self.log("train/rad_loss", loss_dict["rad_loss"], on_epoch=True, batch_size=batch_size)
-        self.log("train/feat_loss", loss_dict["feat_loss"], on_epoch=True, batch_size=batch_size)
+        self.log("train/cam_loss", loss_dict["cam_loss"]/self.camera_weight, on_epoch=True, batch_size=batch_size)
+        self.log("train/rad_loss", loss_dict["rad_loss"]/self.rad_weight, on_epoch=True, batch_size=batch_size)
+        self.log("train/feat_loss", loss_dict["feat_loss"]/self.feat_weight, on_epoch=True, batch_size=batch_size)
 
         return loss_dict["total_loss"]
 
 
     def validation_step(self, batch, batch_idx):
         preds, task_masks = self.model(batch, mask_inputs=True, num_encoded_tokens=self.num_encoded_tokens)
+
         loss_dict = self.compute_loss(preds, batch, task_masks)
         batch_size = batch["cam_bev"].size(0)
 
+        cam_loss = loss_dict["cam_loss"] / self.camera_weight
+        rad_loss = loss_dict["rad_loss"] / self.rad_weight
+        feat_loss = loss_dict["feat_loss"] / self.feat_weight
+        val_loss_unweighted = cam_loss + rad_loss + feat_loss
+
         self.log("val_loss", loss_dict["total_loss"], prog_bar=True, on_epoch=True, batch_size=batch_size)
-        self.log("val/cam_loss", loss_dict["cam_loss"], on_epoch=True, batch_size=batch_size)
-        self.log("val/rad_loss", loss_dict["rad_loss"], on_epoch=True, batch_size=batch_size)
-        self.log("val/feat_loss", loss_dict["feat_loss"], on_epoch=True, batch_size=batch_size)
+        self.log("val_total_loss_unweighted", val_loss_unweighted, prog_bar=True, on_epoch=True, batch_size=batch_size)
+        self.log("val/cam_loss", cam_loss, on_epoch=True, batch_size=batch_size)
+        self.log("val/rad_loss", rad_loss, on_epoch=True, batch_size=batch_size)
+        self.log("val/feat_loss", feat_loss, on_epoch=True, batch_size=batch_size)
 
         return loss_dict["total_loss"]
 

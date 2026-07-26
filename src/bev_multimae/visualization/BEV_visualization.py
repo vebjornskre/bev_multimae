@@ -67,11 +67,11 @@ def plot_bev_comparison(
 
     ax = axes[0]
     ax.imshow(bev_hi_np, origin="lower", aspect="auto", extent=extent)
-    draw_patch_grid(ax, patch_step_x_m, patch_step_y_m, color="red")
+    # draw_patch_grid(ax, patch_step_x_m, patch_step_y_m, color="red")
 
     ax.scatter(
         px_rad, py_rad,
-        s=20,
+        s=10,
         c="lime",
         alpha=1.0,
         edgecolors="black",
@@ -91,15 +91,33 @@ def plot_bev_comparison(
         img_np = img.permute(1, 2, 0).cpu().numpy()
     else:
         img_np = np.array(img)
+
     ax_img.imshow(img_np)
     ax_img.set_title("Image")
+
+    ax_img.scatter(
+        [],
+        [],
+        s=35,
+        c="lime",
+        edgecolors="black",
+        linewidths=0.3,
+        label="Radar points",
+    )
+
+    ax_img.legend(
+        fontsize=8,
+        loc="lower right",
+        framealpha=0.7,
+    )
+
     ax_img.axis("off")
 
     plt.tight_layout()
     if manual_save is None:
         plt.savefig(os.path.join(save_folder, f"video/left/{event}_bev_overlay_{i}.png"), dpi=150)
     else:
-        plt.savefig(os.path.join(manual_save, f"bev.png"))
+        plt.savefig(manual_save)
     plt.close(fig_overlay)
 
 
@@ -134,8 +152,8 @@ def overlay_radar_on_image(cfg, img, pts_rad_ego, T_cam_ego):
     for (u, v), d in zip(uv, depths):
         intensity = int(255 * (1.0 - (d - d_min) / (d_max - d_min)))
         color = (0, intensity, 0)
-        cv2.circle(img_np, (u, v), 5, color, -1)
-    
+        cv2.circle(img_np, (u, v), 3, color, -1)
+
     return img_np
 
 def save_ply_color(fname, pts, color):

@@ -298,7 +298,7 @@ def setup_and_infer(cfg: DictConfig, sample_idx, visualize=True, diagnostic=Fals
         run_diagnostic(model, ds, collate_radar, device, grid_size, patch_size, cfg, mode=diag_mode)
 
     if visualize:
-        viz_preds(composite, sample_batch, cfg.plot_folder)
+        viz_preds(composite, sample_batch, cfg.plot_folder, point_cloud_range=cfg.right_point_cloud_range)
 
     return composite, sample_batch
 

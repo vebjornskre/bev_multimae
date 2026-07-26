@@ -110,7 +110,8 @@ class CenterPointLoss(nn.Module):
         dim_loss = self.reg_loss_fn(pred_dim, target_dim, mask)
         rot_loss = self.reg_loss_fn(pred_rot, target_rot, mask)
 
-        # Weighted sum
+        
+        # Weighted sum used for training
         total_loss = (
             self.heatmap_weight * heatmap_loss +
             self.offset_weight * reg_loss +
@@ -119,9 +120,20 @@ class CenterPointLoss(nn.Module):
             self.rot_weight * rot_loss
         )
 
+        # Comparable logging loss, as if heatmap_weight was 1.0
+        total_loss_comparable = (
+            heatmap_loss +
+            self.offset_weight * reg_loss +
+            self.height_weight * height_loss +
+            self.dim_weight * dim_loss +
+            self.rot_weight * rot_loss
+        )
+
         return {
             "total_loss": total_loss,
+            "total_loss_comparable": total_loss_comparable.detach(),
             "heatmap_loss": heatmap_loss.detach(),
+            "heatmap_loss_weighted": (self.heatmap_weight * heatmap_loss).detach(),
             "reg_loss": reg_loss.detach(),
             "height_loss": height_loss.detach(),
             "dim_loss": dim_loss.detach(),

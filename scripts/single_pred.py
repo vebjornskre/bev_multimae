@@ -12,11 +12,13 @@ log = logging.getLogger(__name__)
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
 
-    sample_idx = 320
+    # sample_idx = 349
+    # sample_idx = 170
+    sample_idx = 1
     log.info(f'Predicting idx {sample_idx} in the validation set')
 
     diagnostic = True
-    diag_mode  = "cam_patch_probe" # same radar but add camera patches form different modalities
+    diag_mode  = "rad_from_camera" # same radar but add camera patches form different modalities
 
     visualize  = True
 

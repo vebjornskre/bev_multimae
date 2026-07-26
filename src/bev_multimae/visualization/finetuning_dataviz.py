@@ -96,6 +96,55 @@ def scatter_seg_points(segs_pts, segs_colors, center_sphere, path, save_ply=Fals
         combined_pcd += center_sphere
         o3d.io.write_point_cloud(path.replace(".png", ".ply"), combined_pcd)
 
+def overlay_lidar_on_image(img, lidar, T_lid_cam, K, D):
+    img_np = np.array(img).copy()
+    H, W = img_np.shape[:2]
+
+    pts = apply_transform(T_lid_cam, lidar)
+    z = pts[:, 2]
+
+    valid = np.isfinite(pts).all(axis=1) & (z > 0) & (np.abs(pts[:, 0] / z) < 0.5)  
+    pts = pts[valid]
+    z = z[valid]
+
+    if D is None or len(np.asarray(D).reshape(-1)) == 0:
+        D = np.zeros(5)
+
+    uv, _ = cv2.projectPoints(
+        pts.astype(np.float64),
+        np.zeros(3),
+        np.zeros(3),
+        K.astype(np.float64),
+        np.asarray(D).astype(np.float64),
+    )
+
+    uv = uv.reshape(-1, 2)
+    u = uv[:, 0]
+    v = uv[:, 1]
+
+    keep = (u >= 0) & (u < W) & (v >= 0) & (v < H)
+    u = u[keep].astype(int)
+    v = v[keep].astype(int)
+    z = z[keep]
+
+    if len(z) == 0:
+        return img_np
+
+    z_norm = (z - z.min()) / max(z.max() - z.min(), 1e-8)
+    colors = plt.cm.plasma_r(z_norm)[:, :3] * 255
+    colors = colors.astype(np.uint8)
+
+    for ui, vi, color in zip(u, v, colors):
+        cv2.circle(
+            img_np,
+            (int(ui), int(vi)),
+            radius=2,
+            color=(int(color[0]), int(color[1]), int(color[2])),
+            thickness=-1,
+        )
+
+    return img_np
+
 def make_sphere_pts(centers, radius=0.5, n=1000, color=[0, 0, 1]):
     centers = np.atleast_2d(centers)
     pcd = o3d.geometry.PointCloud()
@@ -159,23 +208,53 @@ def plot_boxes_on_img(img, boxes, K, D, T_cam_ego, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     cv2.imwrite(save_path, cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR))
 
-def plot_boxes_topdown(boxes, bev, voxel_size, point_cloud_range, save_path):
+def radar_xy(radar):
+    if radar is None:
+        return None
+
+    if isinstance(radar, dict):
+        if "points" in radar:
+            pts = np.asarray(radar["points"])
+            return pts[:, 0], pts[:, 1]
+
+        if "x" in radar and "y" in radar:
+            return np.asarray(radar["x"]), np.asarray(radar["y"])
+
+        if "xyz" in radar:
+            pts = np.asarray(radar["xyz"])
+            return pts[:, 0], pts[:, 1]
+
+    pts = np.asarray(radar)
+    if pts.ndim == 2 and pts.shape[1] >= 2:
+        return pts[:, 0], pts[:, 1]
+
+    return None
+
+
+def plot_boxes_topdown(boxes, bev, voxel_size, point_cloud_range, save_path, radar=None):
     fig, ax = plt.subplots(figsize=(8, 8))
 
     if isinstance(bev, torch.Tensor):
-        bev = bev.numpy()
+        bev = bev.detach().cpu().numpy()
+
     if bev.shape[0] == 3:
         bev = np.transpose(bev, (1, 2, 0))
-    bev = np.clip(bev, 0, 1)
-    ax.imshow(bev, origin='lower')
 
-    colors = ['g', 'r', 'b', 'y', 'm', 'c']
+    bev = np.clip(bev, 0, 1)
     pcr = point_cloud_range
 
-    def ego_to_bev_px(x, y):
-        row = (y - pcr[1]) / voxel_size[1]
-        col = (x - pcr[0]) / voxel_size[0]
-        return row, col
+    ax.imshow(
+        bev,
+        origin="lower",
+        extent=[pcr[0], pcr[3], pcr[1], pcr[4]],
+        aspect="equal",
+    )
+
+    xy = radar_xy(radar)
+    if xy is not None:
+        rx, ry = xy
+        keep = (rx >= pcr[0]) & (rx <= pcr[3]) & (ry >= pcr[1]) & (ry <= pcr[4])
+        ax.scatter(rx[keep], ry[keep], s=15, c="lime", alpha=0.8, linewidths=0)
 
     for j, box in enumerate(boxes):
         if box is None:
@@ -183,34 +262,43 @@ def plot_boxes_topdown(boxes, bev, voxel_size, point_cloud_range, save_path):
 
         color = BOX_COLORS[j % len(BOX_COLORS)]
         color = (color[0] / 255, color[1] / 255, color[2] / 255)
+
         center = box.mean(axis=0)
 
-        top_idx = np.argsort(box[:, 2])[-4:]
         bottom_idx = np.argsort(box[:, 2])[:4]
-
         footprint_pts = box[bottom_idx, :2]
+
         x_min, x_max = footprint_pts[:, 0].min(), footprint_pts[:, 0].max()
         y_min, y_max = footprint_pts[:, 1].min(), footprint_pts[:, 1].max()
 
         footprint = np.array([
-            [x_min, y_min], [x_max, y_min],
-            [x_max, y_max], [x_min, y_max],
+            [x_min, y_min], 
+            [x_max, y_min],
+            [x_max, y_max],
+            [x_min, y_max],
             [x_min, y_min],
         ])
 
-        rows, cols = zip(*[ego_to_bev_px(p[0], p[1]) for p in footprint])
-        ax.plot(cols, rows, color=color, linewidth=1.5)
+        ax.plot(footprint[:, 0], footprint[:, 1], color=color, linewidth=1.5)
+        ax.plot(center[0], center[1], "x", color=color)
+        ax.text(
+            center[0],
+            center[1],
+            f"({center[0]:.1f}, {center[1]:.1f}, {center[2]:.1f})",
+            fontsize=7,
+            color=color,
+        )
 
-        cr, cc = ego_to_bev_px(center[0], center[1])
-        ax.plot(cc, cr, 'x', color=color)
-        ax.text(cc, cr, f"({center[0]:.1f}, {center[1]:.1f}, {center[2]:.1f})", fontsize=7, color=color)
-
-    ax.set_ylabel("Y (lateral)")
-    ax.set_xlabel("X (forward)")
+    ax.set_xlabel("x / forward [m]")
+    ax.set_ylabel("y / lateral [m]")
+    ax.set_xlim(pcr[0], pcr[3])
+    ax.set_ylim(pcr[1], pcr[4])
     ax.grid(False)
+
     plt.tight_layout()
-    plt.savefig(save_path)
+    plt.savefig(save_path, dpi=200, bbox_inches="tight")
     plt.close()
+
 
 def plot_human_boxes(
     cfg,
@@ -285,11 +373,11 @@ def plot_human_boxes(
         hi_res_grid_size,
     )
 
-    img_with_radar = overlay_radar_on_image(cfg, img, ego_radar, T_cam_ego)
+    img_with_lidar = overlay_lidar_on_image(img, lidar, T_lid_cam, K, D)
 
     plot_bev_comparison(
         cfg,
-        img_with_radar,
+        img_with_lidar,
         ego_radar,
         bev_cam_hires,
         voxel_size,
@@ -316,6 +404,10 @@ def plot_human_boxes(
     save_path = os.path.join(save_dir, '3d_box_plot.png')
     plot_boxes_on_img(img, boxes, K, D, T_cam_ego, save_path)
     plot_boxes_topdown(
-        boxes, bev_cam_hires, hi_res_voxel, point_cloud_range,
-        os.path.join(save_dir, "boxes_topdown.png")
+        boxes,
+        bev_cam_hires,
+        hi_res_voxel,
+        point_cloud_range,
+        os.path.join(save_dir, "boxes_topdown.png"),
+        radar=ego_radar,
     )
